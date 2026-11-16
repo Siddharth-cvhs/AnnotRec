@@ -1,0 +1,15 @@
+# dependencies and build output
+node_modules/
+dist/
+src-tauri/target/
+src-tauri/gen/
+
+# a built exe is not source: attach it to a GitHub release instead
+dist-exe/
+
+# local files
+*.log
+.env
+.env.*
+.DS_Store
+Thumbs.db

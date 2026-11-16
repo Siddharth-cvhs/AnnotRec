@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Sample dashboard</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: "Segoe UI", system-ui, sans-serif; background: #f4f5f8; color: #1d2330; }
+  header { background: #1d2330; color: #fff; padding: 14px 24px; display: flex; justify-content: space-between; align-items: center; }
+  header h1 { font-size: 18px; margin: 0; }
+  nav a { color: #aab3c5; margin-left: 18px; text-decoration: none; }
+  nav a:hover { color: #fff; }
+  main { padding: 20px 24px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  .card { background: #fff; border-radius: 12px; padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+  .card h2 { margin: 0 0 12px; font-size: 14px; color: #5b6578; text-transform: uppercase; letter-spacing: .05em; }
+  .kpi { font-size: 34px; font-weight: 700; }
+  .row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #eef0f4; font-size: 14px; }
+  .row:last-child { border: 0; }
+  .bad { color: #dc2626; font-weight: 600; }
+  .ok { color: #16a34a; font-weight: 600; }
+  .wide { grid-column: span 2; }
+  button { background: #3b82f6; color: #fff; border: 0; border-radius: 8px; padding: 8px 14px; cursor: pointer; margin-top: 8px; }
+  .empty { grid-column: span 3; height: 90px; border: 2px dashed #c9cfdb; border-radius: 12px; display: flex; align-items: center; justify-content: center; color: #8b94a7; }
+  #clicks { font-size: 13px; color: #5b6578; margin-top: 6px; }
+</style>
+</head>
+<body>
+<header><h1>Portfolio Dashboard (sample page)</h1><nav><a href="#">Projects</a><a href="#">Resources</a><a href="#">Risks</a></nav></header>
+<main>
+  <div class="card"><h2>Active projects</h2><div class="kpi">78</div></div>
+  <div class="card"><h2>Project status</h2><div class="row"><span>On track</span><span class="ok">52</span></div><div class="row"><span>At risk</span><span class="bad">19</span></div><div class="row"><span>Late</span><span class="bad">7</span></div></div>
+  <div class="card"><h2>Live counter</h2><div class="kpi" id="n">0</div><button onclick="document.getElementById('n').textContent=++window.c">Click me</button><div id="clicks">Proves the page is live between annotations.</div></div>
+  <div class="card wide"><h2>Resource conflicts</h2>
+    <div class="row"><span>Alex</span><span class="bad">36 projects · 1180%</span></div>
+    <div class="row"><span>Sam</span><span class="bad">24 projects · 1040%</span></div>
+    <div class="row"><span>Jordan</span><span class="bad">18 projects · 920%</span></div></div>
+  <div class="card"><h2>Dependency risks</h2><div class="row"><span>Project Atlas</span><span class="bad">Task 2 · 60d late</span></div><div class="row"><span>Project Beacon</span><span class="bad">Task 2 · 60d late</span></div></div>
+  <div class="empty">Empty space: a good place for something new</div>
+</main>
+<script>window.c = 0;</script>
+</body>
+</html>

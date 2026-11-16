@@ -1,0 +1,9 @@
+Socorin
+Copyright 2026 Socorin
+https://socorin.com
+
+---
+AnnotRec incorporates and modifies source files from Socorin
+(https://github.com/huystr/socorin), Apache License 2.0:
+  src-tauri/src/wgc.rs, src-tauri/src/audio.rs
+The changes are listed in ATTRIBUTION.md and marked at the top of each file.

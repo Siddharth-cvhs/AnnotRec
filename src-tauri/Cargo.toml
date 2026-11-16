@@ -1,0 +1,48 @@
+[package]
+name = "annotrec"
+version = "0.1.0"
+description = "Screen recorder with live annotation, freeze-while-recording, microphone and MP4 output"
+edition = "2021"
+license = "Apache-2.0"
+
+[lib]
+name = "annotrec_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["image-png"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+xcap = "0.9.8"
+chrono = "0.4.45"
+base64 = "0.22"
+url = "2"
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = 3
+panic = "abort"
+strip = true
+
+[target.'cfg(target_os = "windows")'.dependencies]
+# The built-in recorder (wgc.rs): Windows.Graphics.Capture frames into a
+# Media Foundation H.264 encoder. `windows` is the crate windows-capture is
+# built on; audio.rs uses its WASAPI bindings for the microphone.
+windows-capture = "2.0.1"
+windows = { version = "0.62", features = [
+    "Foundation",
+    "Foundation_Metadata",
+    "Graphics_Capture",
+    "Security_Authorization_AppCapabilityAccess",
+    "Win32_Devices_FunctionDiscovery",
+    "Win32_Foundation",
+    "Win32_Media_Audio",
+    "Win32_System_Com",
+    "Win32_System_Com_StructuredStorage",
+    "Win32_System_Variant",
+    "Win32_UI_Shell_PropertiesSystem",
+] }

@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "The toolbar and the annotation overlay listen to events and call the app's own commands. The viewport shows an arbitrary web page and gets no capability.",
+  "windows": ["toolbar", "overlay"],
+  "permissions": ["core:default"]
+}
