@@ -61,7 +61,7 @@ try {
   // ------------------------------------------------------------------ load
   const t0 = Date.now();
   await page.goto(`http://localhost:${PORT}`);
-  await page.frameLocator("iframe").getByText("Portfolio Dashboard").waitFor();
+  await page.frameLocator("iframe").getByText("Acme Demo Site").waitFor();
   const nav = await page.evaluate(() => {
     const n = performance.getEntriesByType("navigation")[0];
     const fcp = performance.getEntriesByName("first-contentful-paint")[0];

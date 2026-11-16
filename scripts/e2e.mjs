@@ -35,8 +35,8 @@ try {
   page.on("console", (m) => m.type() === "error" && log(`browser error: ${m.text()}`));
   await page.goto(BASE);
   const frame = page.frameLocator("iframe");
-  await frame.getByText("Portfolio Dashboard").waitFor();
-  log("page loaded, sample dashboard visible in the proxied iframe");
+  await frame.getByText("Acme Demo Site").waitFor();
+  log("page loaded, sample page visible in the proxied iframe");
 
   const phase = () => page.getByTestId("phase").innerText();
   check((await phase()) === "READY", "starts READY");

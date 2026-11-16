@@ -32,7 +32,7 @@ Ports can be changed with `PORT` (default 4000) and `PROXY_PORT` (default
 ## Using it
 
 1. Type your app's address (e.g. `localhost:3000`) and press Go. The built-in
-   sample dashboard shows until you do. Pick a viewport size if you like.
+   sample page shows until you do. Pick a viewport size if you like.
 2. **Start** (`R`). Choose **This tab** when your browser asks (once per
    session). After a 3-second countdown, only the viewport is recorded, never
    the panel or the address bar.

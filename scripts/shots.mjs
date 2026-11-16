@@ -20,7 +20,7 @@ async function open(width, height) {
   const page = await ctx.newPage();
   await page.addInitScript(() => localStorage.setItem("annotrecTest", "1"));
   await page.goto(BASE);
-  await page.frameLocator("iframe").getByText("Portfolio Dashboard").waitFor();
+  await page.frameLocator("iframe").getByText("Acme Demo Site").waitFor();
   return { ctx, page };
 }
 const shot = (page, name) => page.screenshot({ path: path.join(OUT, `${name}.png`) });

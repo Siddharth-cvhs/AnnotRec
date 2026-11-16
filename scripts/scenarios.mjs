@@ -146,7 +146,7 @@ async function openApp({ dpr = 1, width = 1480, height = 820, init = "", setting
   );
   await page.goto(url);
   const frame = page.frameLocator("iframe");
-  if (!skipWait) await frame.getByText("Portfolio Dashboard").waitFor();
+  if (!skipWait) await frame.getByText("Acme Demo Site").waitFor();
   return { ctx, page, frame, errors };
 }
 
