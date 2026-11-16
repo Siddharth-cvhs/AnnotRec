@@ -1,0 +1,19 @@
+# dependencies and build output
+node_modules/
+client/node_modules/
+client/dist/
+
+# recordings and screenshots are user data, never source
+recordings/*
+!recordings/.gitkeep
+
+# results of local test and performance runs
+scripts/last-run.json
+scripts/last-perf.json
+
+# local files
+*.log
+.env
+.env.*
+.DS_Store
+Thumbs.db
