@@ -1,33 +1,124 @@
-# AnnotRec 2.0 (React + Node)
-
-> **Version 2 (this branch, `version-2`, tag `v2.0.0`): the React + Node web app.**
-> **Version 1 (branch [`main`](../../tree/main), the default, tag `v1.0.0`)** is the Windows
-> desktop app (Tauri + Rust). Get it with `git checkout main`.
+# AnnotRec: Version 2 · Web app (React + Node.js)
 
 Version 2 of AnnotRec: the same idea as Version 1 (the desktop app), rebuilt as a
 **web app you serve on a local port**. No exe, so you can change anything. Show a
 live page in a viewport, record it with your microphone, draw on it while you talk,
 freeze it while you explain, and download **one MP4**.
 
-## Run it
+## Which version is this?
 
-You need Node 20+ and FFmpeg on your PATH (or set `FFMPEG_PATH`). Use
-**Microsoft Edge or Chrome 104+**.
+| | Version 1 | **Version 2 (this one)** |
+|---|---|---|
+| **Label** | DESKTOP APP, Windows `.exe` | **WEB APP, React + Node.js** |
+| **Branch / tag** | [`main`](../../tree/main) (default) · `v1.0.0` | **`version-2` · `v2.0.0`** |
+| **What you run** | A built `AnnotRec.exe` with its own windows | **A Node server, opened in Edge or Chrome at `http://localhost:4000`** (no exe) |
+| **Platform** | Windows 10 (1903+) and 11 only | **Anything that runs Node, with Edge or Chrome 104+** |
+| **Main languages** | Rust (recording) + TypeScript/React | **JavaScript (server) + TypeScript/React (client)** |
+| **Recording engine** | Native Windows capture and encoder, no FFmpeg | **The browser records, FFmpeg converts to MP4** |
+| **Built for** | A self-contained tool you just run | **Being extended with plugins and embedded in other apps** |
+
+You are reading **Version 2**. To get Version 1 instead:
+`git clone https://github.com/Siddharth-cvhs/AnnotRec.git` (it is the default branch).
+
+## Tech stack (Version 2: React + Node.js web app)
+
+**Server (Node.js, JavaScript ES modules)**
+
+| Technology | Version | What it does here |
+|---|---|---|
+| **Node.js** + npm | 20.19+ (tested 24.14), npm 11 | Runs the server and all the scripts |
+| **Express** | 5.3 | The HTTP API and the static files; the router can be mounted in any other Express app |
+| **http-proxy-middleware** | 3.0 | The viewport reverse proxy: lets any app be shown in the page, passes WebSockets through |
+| **FFmpeg** (a separate program, found on PATH) | 8.1 | Converts the browser's WebM into an H.264 + AAC MP4, live while recording |
+| Node built-ins (`child_process`, `stream`, `fs`, `events`) | n/a | Running FFmpeg, streaming uploads, file storage, events |
+| Own design: ports (storage, converter), events, server plugins, JSON-lines progress streaming | n/a | See [ARCHITECTURE.md](ARCHITECTURE.md) |
+
+**Client (runs in the browser)**
+
+| Technology | Version | What it does here |
+|---|---|---|
+| **React** + **TypeScript** | 19.3 + 7.0 | The UI shell and the features |
+| **Vite** | 8.3 | Dev server with hot reload, and the production build (two pages: the app and an embedding example) |
+| **lucide-react** | 1.73 | Icons |
+| Own framework-free core: services, registries, typed event bus, stores | n/a | The plugin architecture (no Redux or similar) |
+| HTML **canvas** + plain CSS (design tokens) | n/a | The drawing engine (own shape and tool registries) and the styling |
+
+**Browser features it relies on:** tab capture (`getDisplayMedia`), **Region Capture**
+(`CropTarget` / `cropTo`) to record only the viewport, `MediaRecorder` (VP9 + Opus WebM),
+`getUserMedia` and Web Audio (microphone and level meter), `createImageBitmap`,
+`ResizeObserver`. Region Capture only exists in **Chromium browsers (Edge, Chrome 104+)**.
+
+**Testing and tooling:** **Playwright** (`playwright-core` 1.65) driving the real Edge,
+FFmpeg/ffprobe to analyse the recorded MP4s pixel by pixel, `concurrently` 9.2 for development,
+`tsc` for type checking.
+
+## Quick start (Version 2)
+
+### 1. What you need
+
+| Need | Tested with | Check it |
+|---|---|---|
+| **Node.js** 20.19 or newer, with npm | 24.14 | `node -v` |
+| **FFmpeg** on your PATH (or set `FFMPEG_PATH`) | 8.1 | `ffmpeg -version` |
+| **Microsoft Edge or Google Chrome**, version 104 or newer | Edge 157 | needed for Region Capture |
+| A microphone | any | optional; without one it records silently |
+
+No Rust and no Visual Studio are needed. Not installed yet? From PowerShell:
+`winget install OpenJS.NodeJS` and `winget install Gyan.FFmpeg`, then open a new terminal.
+
+### 2. Get the code and install
 
 ```bash
-npm run setup      # installs the server and the client (once)
-npm run build      # builds the React app
-npm start          # serves everything on http://localhost:4000
+git clone -b version-2 https://github.com/Siddharth-cvhs/AnnotRec.git
+cd AnnotRec          # you are on version-2 = Version 2
+npm run setup        # installs the server and the client, once
 ```
 
-Open **http://localhost:4000**. For development with hot reload:
+### 3a. Run it
 
 ```bash
-npm run dev        # API on :4000, React dev server on http://localhost:5173
+npm run build        # builds the React app
+npm start            # serves everything on http://localhost:4000
 ```
 
-Ports can be changed with `PORT` (default 4000) and `PROXY_PORT` (default
-`PORT + 1`). Recordings go to `recordings/` (or `REC_DIR`).
+Open **http://localhost:4000** in Edge or Chrome. The terminal prints the address, where
+recordings are saved and whether FFmpeg was found.
+
+### 3b. Run it while developing (hot reload)
+
+```bash
+npm run dev          # API on :4000, React dev server on http://localhost:5173
+```
+
+Open **http://localhost:5173**. Edits to the client reload instantly and the server restarts
+when you change it.
+
+**Options:** `PORT` (default 4000), `PROXY_PORT` (default `PORT + 1`), `REC_DIR` (where
+recordings go, default `recordings/`) and `FFMPEG_PATH`. In PowerShell:
+`$env:PORT = 5000; npm start`.
+
+### 4. Using it for the first time
+
+1. Type your app's address (for example `localhost:3000`) and press Go, or use the demo page.
+2. Press **Start**. When the browser asks what to share, choose **This tab**. Allow the
+   microphone.
+3. Pick a drawing tool: the page freezes while you draw and talk and recording continues.
+   **Clear all** brings the live page back.
+4. Press **Stop**: the MP4 is ready in the Saved list in a second or so, in `recordings/`.
+
+### 5. Check that everything works (optional)
+
+```bash
+node scripts/scenarios.mjs      # 45 scenarios in real Edge windows, about 8 minutes
+```
+
+| Problem | Fix |
+|---|---|
+| "FFmpeg not found" in the terminal or the app | Install FFmpeg, or set `FFMPEG_PATH`, then restart |
+| "This browser can't record just a region" | Use Edge or Chrome 104+ at `http://localhost`, not Firefox or Safari |
+| Port 4000 is already in use | Set another `PORT` (see Options) |
+| Start does nothing or the video is empty | Choose "This tab" in the share prompt and keep the tab visible |
+| A page won't show inside the viewport | Strict single sign-on sites may not work through the proxy; try your localhost app |
 
 ## Using it
 
