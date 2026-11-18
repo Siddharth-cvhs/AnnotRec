@@ -88,9 +88,14 @@ export function libraryRoutes(router, ctx) {
 
   // Show a saved file in Windows Explorer (this is a local tool).
   router.post("/api/reveal", express.json({ limit: "10kb" }), (req, res) => {
-    const file = storage.pathOf(req.body?.name);
-    if (!file || !storage.exists(req.body?.name)) return res.status(404).json({ error: "File not found." });
     if (process.platform !== "win32") return res.status(501).json({ error: "Only available on Windows." });
+    if (!req.body?.name) {
+      // no file named: open the recordings folder itself
+      spawn("explorer.exe", [storage.dir], { detached: true, stdio: "ignore" }).unref();
+      return res.status(204).end();
+    }
+    const file = storage.pathOf(req.body.name);
+    if (!file || !storage.exists(req.body.name)) return res.status(404).json({ error: "File not found." });
     spawn("explorer.exe", [`/select,${file}`], { detached: true, stdio: "ignore" }).unref();
     res.status(204).end();
   });

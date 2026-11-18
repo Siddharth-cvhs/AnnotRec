@@ -48,7 +48,13 @@ freeze the page and draw on it while you talk, press **Clear all** to go live ag
 
 **Tools**: Select (V), Pen (B), Highlighter (H), Line (L), Arrow (A), Box (R), Circle (O), Text (T), Numbered marker (M), Eraser (E); 8 colours, size slider; Ctrl+Z / Ctrl+Shift+Z; Delete removes the selected shape; Esc clears and goes live; Shift snaps lines to 45 degrees.
 
-**Tests** (each launches its own Edge and server): `node extension/spike/test/e2e.mjs` (18 checks), `robustness.mjs` (4), `panel.mjs` (5), `pause.mjs` (6), `tools.mjs` (19).
+**Tests** (each launches its own Edge and server): `node extension/spike/test/e2e.mjs` (18 checks), `robustness.mjs` (4), `panel.mjs` (12), `pause.mjs` (6), `tools.mjs` (19), `perf.mjs` (3).
+
+**Permissions**: the first time, **Allow microphone** opens a tab where the browser asks; if it is refused you see `Microphone: Permission denied` with buttons for Edge's and Windows' microphone settings. Start opens the window picker by itself when needed.
+
+**Where the videos are saved**: in the server's `recordings` folder (`react-and-node/recordings`, or the folder in the `REC_DIR` environment variable). The side panel shows the path, with **Open folder**, **Copy path** and **Show** per file.
+
+**Speed** (measured on a 12-core laptop, recording an animated 1596x946 page): 30 fps in the MP4, the browser uses about 8% of the machine while recording (about 5% of that is the page itself), Stop takes under a second.
 
 **Known limits**: Edge only so far (Chrome and Brave untested); moving a shape is not in the undo history; no pencil tool, screenshot button or library page yet in the extension; some company-managed browsers block unpacked extensions. Research, findings and the roadmap: [`extension/NOTES.md`](extension/NOTES.md).
 

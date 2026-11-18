@@ -341,3 +341,8 @@ The spike lives in `extension/spike` (plain-JS Manifest V3, Edge). It records th
 
 ### Annotation tools (added after the first spike)
 Nine tools (pen, highlighter, line, arrow, box, circle, text, numbered marker, eraser), eight colours, size slider, undo/redo, keyboard shortcuts, all working on any page. `test/tools.mjs`: 16 of 16. Pause/resume is built (the paused time is cut from the MP4; `test/pause.mjs` 6 of 6). Select-and-move is built (`test/tools.mjs` 19 of 19; moves are not in the undo history yet). Still not ported from Version 2: pencil, screenshot, the library page, themes.
+
+### Permissions, saved folder and speed (latest round)
+- Microphone permission now has its own tab (`permission.html`), clear `Permission denied` message, and buttons for Edge and Windows settings; Start asks for the microphone and the window by itself.
+- The server reports its recordings folder (`/api/health` -> `folder`) and can open it (`/api/reveal` without a name); the panel shows both.
+- Recorder keeps the newest window frame as a VideoFrame (no per-frame copy) and calibrates with a shorter wait. Measured with `test/perf.mjs` on an animated page: 30 fps in the file, longest gap under about 100 ms, about 8% of a 12-core machine while recording.

@@ -18,7 +18,8 @@ A Manifest V3 extension for **Microsoft Edge**. Record the page you are looking 
 ```powershell
 node test/e2e.mjs          # full flow, 18 checks
 node test/robustness.mjs   # zoom and resize
-node test/panel.mjs        # side panel smoke test
+node test/panel.mjs        # side panel, permission flow, saved-folder line (12 checks)
+node test/perf.mjs         # smoothness and CPU while recording a moving page
 node test/shots.mjs        # regenerates the pictures in extension/docs
 node test/pause.mjs        # pause/resume cuts the paused time (6 checks)
 node test/tools.mjs        # every drawing tool, undo/redo, eraser, shortcuts (19 checks)
@@ -30,3 +31,11 @@ They launch their own Edge and server on spare ports and clean up after themselv
 
 ## Drawing tools
 Select and move (V, Delete removes), Pen (B), Highlighter (H), Line (L), Arrow (A), Box (R), Circle (O), Text (T), Numbered marker (M), Eraser (E). Shift snaps lines and arrows to 45 degrees. Ctrl+Z / Ctrl+Shift+Z undo and redo, Esc clears everything and goes live. Colours and size are in the side panel.
+
+## Permissions
+- **Allow microphone** (or Start, when it is not allowed yet) opens a small AnnotRec tab so the browser shows its microphone prompt. Choose Allow once.
+- If it is refused, the tab says `Microphone: Permission denied` and shows the steps plus two buttons: **Edge microphone settings** (`edge://settings/content/microphone`) and **Windows microphone settings** (`ms-settings:privacy-microphone`).
+- **Start** also opens the window picker by itself when the window is not shared yet, and explains what to do if it is cancelled.
+
+## Where the videos are saved
+In the folder of the server that makes the MP4: by default `recordings` inside the repo (`react-and-node/recordings`), or the folder in the `REC_DIR` environment variable. The side panel shows the exact path under **Saved videos**, with **Open folder**, **Copy path** and a **Show** button for each file.

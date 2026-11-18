@@ -25,6 +25,15 @@
   .sw.on { border-color: #fff; }
   .size { align-items: center; } .size input { flex: 1; }
   button:disabled { opacity: .4; cursor: default; }
+  .chips { display: flex; gap: 6px; flex-wrap: wrap; font-size: 12px; }
+  .chip { padding: 3px 9px; border-radius: 99px; background: #2a303b; color: #a4acbd; }
+  .chip.ok { background: rgba(34,197,94,.16); color: #7ee2a0; } .chip.bad { background: rgba(239,68,68,.18); color: #ffb4b8; }
+  .help { background: rgba(239,68,68,.10); border: 1px solid rgba(239,68,68,.35); border-radius: 8px; padding: 9px; display: grid; gap: 8px; font-size: 12px; line-height: 1.5; }
+  .help[hidden] { display: none; }
+  a.btn { background: #2a303b; border: 1px solid #343b4a; border-radius: 8px; padding: 7px 10px; color: inherit; text-decoration: none; }
+  .folder { font: 11px monospace; color: #a4acbd; word-break: break-all; }
+  li { display: flex; gap: 8px; align-items: center; justify-content: space-between; margin: 3px 0; }
+  li button { padding: 2px 8px; font-size: 11px; }
   ul { margin: 0; padding-left: 18px; font-size: 12px; }
 </style>
 </head>
@@ -36,6 +45,15 @@
     <div class="row">
       <button id="pick" class="primary" title="Pick the browser window once. The picture then follows whichever tab you are on.">Share this browser window</button>
       <button id="mic" title="Allow the microphone for the extension (one time)">Allow microphone</button>
+    </div>
+    <div id="perm" class="chips"></div>
+    <div id="help" class="help" hidden>
+      <div id="helptext"></div>
+      <div class="row">
+        <button id="helpallow" class="primary">Ask again</button>
+        <button id="helpedge">Edge microphone settings</button>
+        <a id="helpwin" class="btn" href="ms-settings:privacy-microphone" target="_blank">Windows microphone settings</a>
+      </div>
     </div>
   </section>
 
@@ -74,7 +92,12 @@
 
   <div id="status">…</div>
   <div id="err"></div>
-  <section><h2>Saved by the server</h2><ul id="files"></ul></section>
+  <section>
+    <h2>Saved videos</h2>
+    <div id="folder" class="folder">Folder: …</div>
+    <div class="row"><button id="openfolder">Open folder</button><button id="copyfolder">Copy path</button></div>
+    <ul id="files"></ul>
+  </section>
   <script src="sidepanel.js"></script>
 </body>
 </html>

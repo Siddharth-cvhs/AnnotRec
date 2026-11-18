@@ -33,6 +33,8 @@ async function activeTab() {
 
 const toTab = async (message) => chrome.tabs.sendMessage((await activeTab()).id, message);
 
+const serverUrl = async () => (await chrome.storage.local.get("server")).server ?? "http://localhost:4000";
+
 const api = {
   /** Where the AnnotRec server (our FFmpeg pipeline) is. */
   async setServer(url) {
@@ -54,7 +56,7 @@ const api = {
    */
   async calibrate() {
     const geometry = await toTab({ type: "marker", on: true });
-    await sleep(450); // a few frames for the marker to reach the capture
+    await sleep(150); // the recorder keeps looking for the marker for a few seconds, so no long fixed wait is needed
     try {
       return await off({ type: "calibrate", geometry });
     } finally {
@@ -87,8 +89,23 @@ const api = {
   pageState: () => toTab({ type: "state" }),
 
   async list() {
-    const { server } = await chrome.storage.local.get("server");
-    return (await fetch(`${server ?? "http://localhost:4000"}/api/recordings`)).json();
+    return (await fetch(`${await serverUrl()}/api/recordings`)).json();
+  },
+
+  /** { folder, ffmpeg, ... }: where the server saves recordings. */
+  async health() {
+    return (await fetch(`${await serverUrl()}/api/health`)).json();
+  },
+
+  /** Show a saved file in Explorer (no name: open the recordings folder). */
+  async reveal(name) {
+    const r = await fetch(`${await serverUrl()}/api/reveal`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(name ? { name } : {}),
+    });
+    if (!r.ok && r.status !== 204) throw new Error((await r.json().catch(() => ({}))).error ?? `reveal ${r.status}`);
+    return { ok: true };
   },
 };
 self.api = api;

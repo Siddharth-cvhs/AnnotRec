@@ -5,7 +5,7 @@ import fs from "node:fs";
 import { normalizeAddress } from "../util.js";
 
 export function coreRoutes(router, ctx) {
-  const { converter, targets, options } = ctx;
+  const { converter, targets, options, storage } = ctx;
 
   router.get("/api/health", async (_req, res) => {
     res.json({
@@ -13,6 +13,7 @@ export function coreRoutes(router, ctx) {
       proxyPort: options.proxyPort,
       target: targets.get(),
       qualities: converter.qualities,
+      folder: storage.dir, // where the recordings are saved
     });
   });
 

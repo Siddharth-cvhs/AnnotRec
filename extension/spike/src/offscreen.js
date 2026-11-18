@@ -30,6 +30,9 @@ const S = {
   micState: null,
 };
 
+/** Size of a window frame (VideoFrame, or an ImageBitmap in older paths). */
+const fw = (f) => f.displayWidth ?? f.width;
+const fh = (f) => f.displayHeight ?? f.height;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const even = (n) => Math.max(2, Math.round(n / 2) * 2);
 
@@ -59,10 +62,9 @@ async function useStream(stream) {
       const { value, done } = await reader.read();
       if (done) break;
       S.windowFrames++;
-      const bitmap = await createImageBitmap(value);
-      value.close();
+      // Keep the newest frame as it is (no copy). Only one is held at a time, so the capture never stalls.
       S.latest?.close();
-      S.latest = bitmap;
+      S.latest = value;
     }
   })();
   for (let i = 0; i < 40 && !S.latest; i++) await sleep(50);
@@ -74,14 +76,14 @@ async function useStream(stream) {
 function findMarker() {
   const f = S.latest;
   if (!f) return null;
-  const c = new OffscreenCanvas(f.width, f.height);
+  const c = new OffscreenCanvas(fw(f), fh(f));
   const ctx = c.getContext("2d", { willReadFrequently: true });
   ctx.drawImage(f, 0, 0);
-  const d = ctx.getImageData(0, 0, f.width, f.height).data;
-  let x0 = f.width, y0 = f.height, x1 = -1, y1 = -1, n = 0;
-  for (let y = 0; y < f.height; y++) {
-    for (let x = 0; x < f.width; x++) {
-      const i = (y * f.width + x) * 4;
+  const d = ctx.getImageData(0, 0, fw(f), fh(f)).data;
+  let x0 = fw(f), y0 = fh(f), x1 = -1, y1 = -1, n = 0;
+  for (let y = 0; y < fh(f); y++) {
+    for (let x = 0; x < fw(f); x++) {
+      const i = (y * fw(f) + x) * 4;
       if (d[i] > 200 && d[i + 1] < 70 && d[i + 2] > 200) {
         n++;
         if (x < x0) x0 = x;
@@ -91,7 +93,7 @@ function findMarker() {
       }
     }
   }
-  return n < 200 ? null : { frame: { w: f.width, h: f.height }, x0, y0, w: x1 - x0 + 1, h: y1 - y0 + 1 };
+  return n < 200 ? null : { frame: { w: fw(f), h: fh(f) }, x0, y0, w: x1 - x0 + 1, h: y1 - y0 + 1 };
 }
 
 /**
@@ -124,7 +126,7 @@ function pageRect(frame) {
   const zoom = geo.dpr / cal.dpr; // zoom differs between sites; the page's own dpr tells us
   const sw = Math.round(geo.innerW * cal.scaleX * zoom);
   const sh = Math.round(geo.innerH * cal.scaleY * zoom);
-  return { sx: cal.left, sy: frame.height - cal.bottomGap - sh, sw, sh };
+  return { sx: cal.left, sy: fh(frame) - cal.bottomGap - sh, sw, sh };
 }
 
 // -------------------------------------------------------------------- recording
@@ -306,13 +308,13 @@ chrome.runtime.onMessage.addListener((m, _sender, reply) => {
       case "peek": {
         // debugging aid: the newest window frame as a JPEG
         if (!S.latest) throw new Error("no frame");
-        const c = new OffscreenCanvas(S.latest.width, S.latest.height);
+        const c = new OffscreenCanvas(fw(S.latest), fh(S.latest));
         c.getContext("2d").drawImage(S.latest, 0, 0);
         const blob = await c.convertToBlob({ type: "image/jpeg", quality: 0.6 });
         const buf = new Uint8Array(await blob.arrayBuffer());
         let s = "";
         for (let i = 0; i < buf.length; i += 0x8000) s += String.fromCharCode(...buf.subarray(i, i + 0x8000));
-        return { ok: true, w: S.latest.width, h: S.latest.height, jpegBase64: btoa(s) };
+        return { ok: true, w: fw(S.latest), h: fh(S.latest), jpegBase64: btoa(s) };
       }
       case "attachDisplay":
         return attachDisplay();
