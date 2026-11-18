@@ -16,20 +16,24 @@ A Manifest V3 extension for **Microsoft Edge**. Record the page you are looking 
 
 ## Tests
 ```powershell
-node test/e2e.mjs          # full flow, 18 checks
-node test/robustness.mjs   # zoom and resize
-node test/panel.mjs        # side panel, permission flow, saved-folder line (12 checks)
-node test/latency.mjs      # freeze time and drawing smoothness over 400 shapes
-node test/demo.mjs         # a presenter's run: shortcuts, badge, clock, level meter, navigating mid-recording
-node test/perf.mjs         # smoothness and CPU while recording a moving page
-node test/shots.mjs        # regenerates the pictures in extension/docs
-node test/pause.mjs        # pause/resume cuts the paused time (6 checks)
-node test/tools.mjs        # every drawing tool, undo/redo, eraser, shortcuts (19 checks)
+npm run ext:test           # everything, one after another, with a summary (about 5 minutes)
+node extension/spike/test/all.mjs --soak=90   # the same plus a 90 s endurance recording
 ```
-They launch their own Edge and server on spare ports and clean up after themselves.
+Each suite launches its own Edge and server on spare ports and cleans up after itself. They can also be run one by one (`node test/<name>.mjs`):
 
-## Files
-`src/background.js` (service worker), `src/offscreen.js` (recorder), `src/content.js` (overlay and drawing), `src/sidepanel.*` (toolbar).
+| Suite | Checks |
+|---|---|
+| `static` | manifest, least-privilege permissions, icons, no eval or external addresses, only the public key |
+| `tools` | every drawing tool, undo/redo, select/move, eraser, shortcuts |
+| `latency` | freeze time, smoothness with 400 shapes |
+| `panel` | side panel, permission flow, saved-folder line |
+| `hardening` | server down, share ended mid-recording, unsafe server address, restricted pages |
+| `e2e` | the whole flow with pixel and sound checks on the MP4 |
+| `robustness` | zoom and window resize while recording |
+| `pause` | pause/resume cuts the paused time |
+| `perf` | frame rate and CPU while recording |
+| `demo` | shortcuts, badge, clock, level meter, navigating mid-recording (+ optional soak) |
+| `autoreload` | a rebuild is picked up by itself, never during a recording |
 
 ## Drawing tools
 Select and move (V, Delete removes), Pen (B), Highlighter (H), Line (L), Arrow (A), Box (R), Circle (O), Text (T), Numbered marker (M), Eraser (E). Shift snaps lines and arrows to 45 degrees. Ctrl+Z / Ctrl+Shift+Z undo and redo, Esc clears everything and goes live. Colours and size are in the side panel.
@@ -47,3 +51,12 @@ In the folder of the server that makes the MP4: by default `recordings` inside t
 - The toolbar icon shows **REC** while recording, **II** when paused and **!** when a shortcut could not run.
 - The side panel shows a big clock, a Recording / Paused state and a microphone level meter, and a green "Saved" line with a **Show** button when you stop.
 - Drawing is smooth: freehand lines are curves (no corners), finished shapes are cached so a page with hundreds of shapes still draws at 60 fps, and freezing takes about 10 ms.
+
+## After you change the code
+`npm run ext:build` (or `node extension/spike/build.mjs`) rewrites `dist/`. An extension that is already loaded **reloads itself** within a few seconds of the next click in the side panel, and never while a recording is running. You do not touch `edge://extensions`. Only two things reset: the window share (pick the window again) and any frozen drawing. The microphone permission and your settings stay. (A pre-v3.0.0 build has no self-reload: reload it once by hand.)
+
+## Safety and resilience
+- Recordings are sent only to a server on this computer (`localhost` or `127.0.0.1`); any other address is refused.
+- Permissions: `offscreen`, `sidePanel`, `storage`, `tabs`, `scripting`, and page access to draw on sites. No capture permission, nothing exposed to websites.
+- Start checks the server and FFmpeg first and says what is wrong in plain words. Pieces of the recording are retried if the server hiccups. If you press "Stop sharing" in the middle of a recording, it is saved, not lost, and the panel tells you why it stopped.
+- Browser pages (`edge://`, the extension store) cannot be drawn on; the panel says so.

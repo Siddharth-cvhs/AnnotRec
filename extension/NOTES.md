@@ -346,3 +346,6 @@ Nine tools (pen, highlighter, line, arrow, box, circle, text, numbered marker, e
 - Microphone permission now has its own tab (`permission.html`), clear `Permission denied` message, and buttons for Edge and Windows settings; Start asks for the microphone and the window by itself.
 - The server reports its recordings folder (`/api/health` -> `folder`) and can open it (`/api/reveal` without a name); the panel shows both.
 - Recorder keeps the newest window frame as a VideoFrame (no per-frame copy) and calibrates with a shorter wait. Measured with `test/perf.mjs` on an animated page: 30 fps in the file, longest gap under about 100 ms, about 8% of a 12-core machine while recording.
+
+### Production hardening (round 5)
+Least-privilege manifest (desktopCapture removed), real icons and version 3.0.0, server address restricted to this computer, pre-flight check of server and FFmpeg, chunk retries, auto-save when the window share ends, microphone released when a start fails, plain-language messages for restricted pages, panel accessibility (labels, live regions, focus rings), self-reload after a rebuild (never while recording), static quality gate, and a runner (`npm run ext:test`): 11 suites, all passing, including a 90 s endurance recording.

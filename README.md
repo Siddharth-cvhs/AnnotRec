@@ -48,7 +48,9 @@ freeze the page and draw on it while you talk, press **Clear all** to go live ag
 
 **Tools**: Select (V), Pen (B), Highlighter (H), Line (L), Arrow (A), Box (R), Circle (O), Text (T), Numbered marker (M), Eraser (E); 8 colours, size slider; Ctrl+Z / Ctrl+Shift+Z; Delete removes the selected shape; Esc clears and goes live; Shift snaps lines to 45 degrees.
 
-**Tests** (each launches its own Edge and server): `node extension/spike/test/e2e.mjs` (18 checks), `robustness.mjs` (4), `panel.mjs` (12), `pause.mjs` (6), `tools.mjs` (19), `perf.mjs` (3).
+**Tests**: `npm run ext:test` runs 11 suites (about 110 checks, each in its own Edge and server): static quality gate, drawing tools, latency, panel and permissions, failure handling, end-to-end recording with pixel and sound checks, zoom/resize, pause, performance, demo run, auto-reload.
+
+**After you change the code**: `npm run ext:build`. A loaded extension reloads itself (not during a recording); you do not need to touch `edge://extensions`. Only the window share has to be picked again.
 
 **Demo mode**: Alt+Shift+R start/stop, Alt+Shift+P pause/resume, Alt+Shift+D draw/go live, from any page. The toolbar icon shows REC / II, and the panel shows a clock and a microphone level meter.
 

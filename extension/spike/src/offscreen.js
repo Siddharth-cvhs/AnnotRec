@@ -28,6 +28,7 @@ const S = {
   windowFrames: 0,
   micPeak: 0,
   micState: null,
+  busy: 0, // starting or stopping right now
 };
 
 /** Size of a window frame (VideoFrame, or an ImageBitmap in older paths). */
@@ -43,19 +44,21 @@ async function attachDisplay() {
   return useStream(stream);
 }
 
-async function attach(streamId) {
-  const stream = await navigator.mediaDevices.getUserMedia({
-    audio: false,
-    video: { mandatory: { chromeMediaSource: "desktop", chromeMediaSourceId: streamId, maxFrameRate: 30 } },
-  });
-  return useStream(stream);
-}
-
 async function useStream(stream) {
   S.track?.stop();
   const [track] = stream.getVideoTracks();
   S.track = track;
-  track.addEventListener("ended", () => (S.track = null));
+  track.addEventListener("ended", async () => {
+    S.track = null;
+    if (!S.recorder) return;
+    // Do not lose the recording: finish and save it, and tell the user why it stopped.
+    try {
+      const r = await stop();
+      chrome.runtime.sendMessage({ type: "auto-stopped", reason: "The window share ended, so the recording was stopped and saved.", saved: r.saved, durationMs: r.durationMs }).catch(() => {});
+    } catch (e) {
+      chrome.runtime.sendMessage({ type: "auto-stopped", reason: "The window share ended and the recording could not be saved.", error: String(e.message ?? e) }).catch(() => {});
+    }
+  });
   const reader = new MediaStreamTrackProcessor({ track }).readable.getReader();
   (async () => {
     for (;;) {
@@ -150,7 +153,12 @@ function tick() {
 }
 
 async function openUpload(server, quality, copyVideo) {
-  const r = await fetch(`${server}/api/live?quality=${quality}${copyVideo ? "&video=copy" : ""}`, { method: "POST" });
+  let r;
+  try {
+    r = await fetch(`${server}/api/live?quality=${quality}${copyVideo ? "&video=copy" : ""}`, { method: "POST" });
+  } catch {
+    throw new Error(`Cannot reach the AnnotRec server at ${server}. Start it (npm start) and try again.`);
+  }
   if (!r.ok) throw new Error(`The AnnotRec server refused the recording (${r.status}). Is it running, and does it allow this extension?`);
   const { id } = await r.json();
   let chain = Promise.resolve();
@@ -161,8 +169,17 @@ async function openUpload(server, quality, copyVideo) {
       chain = chain
         .then(async () => {
           if (failed) return;
-          const res = await fetch(`${server}/api/live/${id}/chunk`, { method: "POST", body: blob });
-          if (!res.ok) throw new Error(`chunk ${res.status}`);
+          // a short hiccup (server busy, brief network error) must not lose the recording: retry a few times
+          for (let attempt = 1; ; attempt++) {
+            try {
+              const res = await fetch(`${server}/api/live/${id}/chunk`, { method: "POST", body: blob });
+              if (!res.ok) throw new Error(`chunk ${res.status}`);
+              return;
+            } catch (e) {
+              if (attempt >= 4) throw e;
+              await sleep(300 * attempt);
+            }
+          }
         })
         .catch((e) => (failed = e));
     },
@@ -184,7 +201,7 @@ async function openUpload(server, quality, copyVideo) {
 }
 
 /** codec: "h264" (the browser encodes, the server only repackages) or "vp9" (the server re-encodes to H.264). */
-async function start({ micOn = true, quality = "standard", server = "http://localhost:4000", codec = "h264", debugRaw = false } = {}) {
+async function startUnsafe({ micOn = true, quality = "standard", server = "http://localhost:4000", codec = "h264", debugRaw = false } = {}) {
   S.pieces = debugRaw ? [] : null;
   if (S.recorder) throw new Error("Already recording.");
   if (!S.cal || !S.geo) throw new Error("Not calibrated yet.");
@@ -252,6 +269,21 @@ async function start({ micOn = true, quality = "standard", server = "http://loca
   return { ok: true, out: S.out, micIssue: S.micIssue, codec: S.codecUsed, startedAt: S.startedAt };
 }
 
+async function start(options = {}) {
+  S.busy++;
+  try {
+    return await startUnsafe(options);
+  } catch (e) {
+    clearInterval(S.timer);
+    S.recorder = null;
+    S.mic?.getTracks().forEach((t) => t.stop());
+    S.mic = S.micTrack = null;
+    throw e;
+  } finally {
+    S.busy--;
+  }
+}
+
 // Pause: the recorder drops the paused time, so the MP4 simply continues where it left off.
 const elapsed = () => (S.recorder ? Date.now() - S.startedAt - S.pausedTotal - (S.pausedAt ? Date.now() - S.pausedAt : 0) : 0);
 
@@ -276,7 +308,7 @@ function resume() {
   return { ok: true, paused: false };
 }
 
-async function stop() {
+async function stopUnsafe() {
   if (!S.recorder) throw new Error("Not recording.");
   if (S.pausedAt) resume();
   clearInterval(S.timer);
@@ -301,13 +333,21 @@ async function stop() {
   return { ok: true, rawBase64, saved, durationMs, framesDrawn: S.frames, maxTickGapMs: Math.round(S.maxGap), windowFramesReceived: S.windowFrames, micPeak: Number(S.micPeak.toFixed(4)), micState: S.micState };
 }
 
+/** While a recording is starting or being finished it must not be interrupted (a reload would lose it). */
+async function stop() {
+  S.busy++;
+  try {
+    return await stopUnsafe();
+  } finally {
+    S.busy--;
+  }
+}
+
 // -------------------------------------------------------------------- messages
 chrome.runtime.onMessage.addListener((m, _sender, reply) => {
   if (m?.target !== "offscreen") return;
   const run = async () => {
     switch (m.type) {
-      case "attach":
-        return attach(m.streamId);
       case "peek": {
         // debugging aid: the newest window frame as a JPEG
         if (!S.latest) throw new Error("no frame");
@@ -330,6 +370,10 @@ chrome.runtime.onMessage.addListener((m, _sender, reply) => {
         return start(m);
       case "stop":
         return stop();
+      case "simulateShareEnded": // test hook: the same thing that happens when the user presses "Stop sharing"
+        S.track?.stop();
+        S.track?.dispatchEvent(new Event("ended"));
+        return { ok: true };
       case "pause":
         return pause();
       case "resume":
@@ -342,6 +386,7 @@ chrome.runtime.onMessage.addListener((m, _sender, reply) => {
           sharing: !!S.track,
           calibrated: !!S.cal,
           recording: !!S.recorder,
+          busy: S.busy > 0 || !!S.recorder,
           paused: !!S.pausedAt,
           micLevel: S.recorder && S.micTrack?.enabled ? Number((S.micLevel || 0).toFixed(3)) : 0,
           micOn: S.micTrack ? S.micTrack.enabled : null,

@@ -9,7 +9,9 @@
     "dev": "concurrently -n api,web -c blue,green \"node --watch server/index.js\" \"npm --prefix client run dev\"",
     "build": "npm --prefix client run build",
     "start": "node server/index.js",
-    "e2e": "node scripts/e2e.mjs"
+    "e2e": "node scripts/e2e.mjs",
+    "ext:build": "node extension/spike/build.mjs",
+    "ext:test": "node extension/spike/test/all.mjs"
   },
   "dependencies": {
     "express": "^5.1.0",

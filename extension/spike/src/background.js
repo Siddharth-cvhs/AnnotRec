@@ -19,6 +19,7 @@ async function ensureOffscreen() {
 
 /** Ask the offscreen recorder to do something. */
 async function off(message) {
+  if (message.type !== "status") reloadIfRebuilt(); // a rebuild is picked up whenever the extension is used
   await ensureOffscreen();
   const r = await chrome.runtime.sendMessage({ target: "offscreen", ...message });
   if (r?.error) throw new Error(r.error);
@@ -44,16 +45,28 @@ function badge(text, color) {
 const api = {
   /** Where the AnnotRec server (our FFmpeg pipeline) is. */
   async setServer(url) {
-    await chrome.storage.local.set({ server: url });
+    // Recordings go only to a server on this computer: anything else is refused.
+    let u;
+    try {
+      u = new URL(url);
+    } catch {
+      throw new Error("That is not a valid address. Example: http://localhost:4000");
+    }
+    if (!["http:", "https:"].includes(u.protocol) || !["localhost", "127.0.0.1", "[::1]"].includes(u.hostname)) {
+      throw new Error("For safety the server must be on this computer (localhost or 127.0.0.1).");
+    }
+    await chrome.storage.local.set({ server: u.origin });
+    return { ok: true, server: u.origin };
+  },
+
+  async getServer() {
+    return { server: await serverUrl() };
   },
 
   /** Share the browser window, once. The picture follows whichever tab is in front. */
-  async pick(mode = "display") {
+  async pick() {
     await ensureOffscreen();
-    if (mode === "display") return off({ type: "attachDisplay" });
-    const streamId = await new Promise((resolve) => chrome.desktopCapture.chooseDesktopMedia(["window"], resolve));
-    if (!streamId) throw new Error("No window was chosen.");
-    return off({ type: "attach", streamId });
+    return off({ type: "attachDisplay" });
   },
 
   /**
@@ -70,7 +83,21 @@ const api = {
     }
   },
 
+  /** Is the AnnotRec server there, and can it make MP4s? Asked before anything is captured. */
+  async preflight() {
+    const server = await serverUrl();
+    let h;
+    try {
+      h = await (await fetch(`${server}/api/health`, { signal: AbortSignal.timeout(2500) })).json();
+    } catch {
+      throw new Error(`Cannot reach the AnnotRec server at ${server}. Start it (npm start) and try again.`);
+    }
+    if (!h.ffmpeg) throw new Error("The AnnotRec server cannot find FFmpeg, so it cannot make the MP4. Install FFmpeg and restart the server.");
+    return { ok: true, folder: h.folder };
+  },
+
   async start(options = {}) {
+    await api.preflight();
     const cal = await api.calibrate();
     await off({ type: "geometry", ...(await toTab({ type: "marker", on: false })) });
     // The recorder page has no storage access (offscreen pages only get the messaging API): pass the server address in.
@@ -132,12 +159,38 @@ const api = {
 };
 self.api = api;
 
+// ------------------------------------------------------------------ development: reload after a rebuild
+// An unpacked extension is read from disk. `node build.mjs` writes version.txt; when it changes and nothing is being
+// recorded, the extension reloads itself, so you never have to press the reload arrow. (Not used in a packed build.)
+const IS_UNPACKED = !chrome.runtime.getManifest().update_url;
+let myVersion = null;
+let lastCheck = 0;
+async function reloadIfRebuilt() {
+  if (!IS_UNPACKED || Date.now() - lastCheck < 3000) return;
+  lastCheck = Date.now();
+  try {
+    const v = (await (await fetch(chrome.runtime.getURL("version.txt"), { cache: "no-store" })).text()).trim();
+    if (myVersion === null) myVersion = v;
+    else if (v !== myVersion && !(await off({ type: "status" })).busy) chrome.runtime.reload();
+  } catch {
+    /* no version file: nothing to do */
+  }
+}
+reloadIfRebuilt();
+
 // ------------------------------------------------------------------ messages
 chrome.runtime.onMessage.addListener((m, sender, reply) => {
   if (m?.target === "offscreen") return; // for the recorder
   if (m?.type === "api") {
+    reloadIfRebuilt();
     api[m.fn](...(m.args ?? [])).then(reply, (e) => reply({ error: String(e.message ?? e) }));
     return true;
+  }
+  if (m?.type === "auto-stopped") {
+    badge("!", "#ef4444");
+    setTimeout(() => badge(""), 5000);
+    chrome.storage.local.set({ lastEnded: { at: Date.now(), reason: m.reason, name: m.saved?.name ?? null, error: m.error ?? null } }).catch(() => {});
+    return;
   }
   if (m?.type === "geometry") {
     // Pages report their size; the recorder only cares about the tab that is in front.

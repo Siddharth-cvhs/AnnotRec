@@ -2,10 +2,15 @@
 const $ = (id) => document.getElementById(id);
 const call = (fn, ...args) => chrome.runtime.sendMessage({ type: "api", fn, args });
 
+const friendly = (e) =>
+  /Receiving end does not exist|Cannot access|cannot be scripted|No tab with id|extensions gallery/i.test(e)
+    ? "Drawing is not available on this page. Browser pages (edge://, the extension store, new tab) cannot be drawn on. Open a normal website."
+    : e;
+
 async function run(fn, ...args) {
   $("err").textContent = "";
   const r = await call(fn, ...args);
-  if (r?.error) $("err").textContent = r.error;
+  if (r?.error) $("err").textContent = friendly(r.error);
   refresh();
   return r;
 }
@@ -160,6 +165,8 @@ async function refresh() {
     ? s.error
     : `sharing: ${s.sharing}   calibrated: ${s.calibrated}\nrecording: ${s.paused ? "paused" : s.recording}   ${(s.elapsedMs / 1000).toFixed(1)} s`;
   const p = await call("pageState");
+  $("pagehint").hidden = !p?.error;
+  if (p?.error) $("pagehint").textContent = "Drawing is not available on this page (browser pages cannot be drawn on). Switch to a normal website.";
   if (p && !p.error) {
     tool = p.tool ?? tool;
     document.querySelectorAll("[data-tool]").forEach((b) => b.classList.toggle("on", p.frozen && b.dataset.tool === p.tool));
@@ -193,4 +200,35 @@ $("files").onclick = (e) => e.target.dataset.show && run("reveal", e.target.data
 
 chrome.runtime.onMessage.addListener((m) => {
   if (m?.type === "permission" && m.mic === "granted") chrome.storage.local.set({ micGranted: true }).then(renderPerm);
+});
+
+document.querySelectorAll("button[title]").forEach((b) => b.setAttribute("aria-label", b.title));
+
+// ------------------------------------------------------------------ settings: the server address
+(async () => {
+  $("server").value = (await call("getServer"))?.server ?? "";
+})();
+$("saveserver").onclick = async () => {
+  const r = await call("setServer", $("server").value.trim());
+  $("err").textContent = r?.error ?? "";
+  if (!r?.error) {
+    $("server").value = r.server;
+    folder = "";
+    $("status").textContent = "Server address saved.";
+  }
+};
+
+// ------------------------------------------------------------------ a recording that stopped by itself
+function showEnded(e) {
+  if (!e) return;
+  $("toasttext").textContent = e.error ? `${e.reason} ${e.error}` : `${e.reason} ${e.name ?? ""}`.trim();
+  $("toast").hidden = false;
+  lastSaved = e.name ?? "";
+  $("toastshow").hidden = !e.name;
+}
+chrome.storage.local.get("lastEnded").then(({ lastEnded }) => {
+  if (lastEnded && Date.now() - lastEnded.at < 5 * 60_000) showEnded(lastEnded);
+});
+chrome.runtime.onMessage.addListener((m) => {
+  if (m?.type === "auto-stopped") showEnded({ reason: m.reason, name: m.saved?.name, error: m.error });
 });
