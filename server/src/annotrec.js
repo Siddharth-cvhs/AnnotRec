@@ -47,7 +47,7 @@ export function createAnnotRec(userOptions = {}) {
   };
 
   const router = express.Router();
-  if (options.guard === "loopback") router.use(loopbackGuard());
+  if (options.guard === "loopback") router.use(loopbackGuard(options.allowedOrigins));
   else if (typeof options.guard === "function") router.use(options.guard);
 
   const ctx = { router, events, storage, converter, targets, options, live, enqueue };

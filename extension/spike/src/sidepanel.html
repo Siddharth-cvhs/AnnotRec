@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>AnnotRec</title>
+<style>
+  :root { color-scheme: dark; font: 13px "Segoe UI", system-ui, sans-serif; }
+  body { margin: 0; padding: 12px; background: #16181d; color: #e8eaf0; display: grid; gap: 10px; }
+  h1 { font-size: 14px; margin: 0; display: flex; align-items: center; gap: 8px; }
+  h1 small { font: 600 10px monospace; color: #5b8cff; background: rgba(91,140,255,.15); padding: 2px 6px; border-radius: 99px; }
+  section { background: #1f232b; border: 1px solid #2f3541; border-radius: 10px; padding: 10px; display: grid; gap: 8px; }
+  h2 { margin: 0; font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: #6f788b; }
+  .row { display: flex; gap: 6px; flex-wrap: wrap; }
+  button { background: #2a303b; color: inherit; border: 1px solid #343b4a; border-radius: 8px; padding: 7px 10px; font: inherit; cursor: pointer; }
+  button:hover { background: #343b49; }
+  button.rec { background: #ff4d57; border-color: #ff4d57; font-weight: 600; }
+  button.primary { background: #3f72f0; border-color: #3f72f0; }
+  #status { font: 12px monospace; color: #a4acbd; white-space: pre-wrap; }
+  #err { color: #ffb4b8; }
+  a { color: #93c5fd; }
+  ul { margin: 0; padding-left: 18px; font-size: 12px; }
+</style>
+</head>
+<body>
+  <h1>AnnotRec <small>extension spike</small></h1>
+
+  <section>
+    <h2>1 · Set up (once)</h2>
+    <div class="row">
+      <button id="pick" class="primary" title="Pick the browser window once. The picture then follows whichever tab you are on.">Share this browser window</button>
+      <button id="mic" title="Allow the microphone for the extension (one time)">Allow microphone</button>
+    </div>
+  </section>
+
+  <section>
+    <h2>2 · Record</h2>
+    <div class="row">
+      <button id="start" class="rec">Start</button>
+      <button id="stop">Stop</button>
+      <button id="mute">Mic on/off</button>
+    </div>
+  </section>
+
+  <section>
+    <h2>3 · Annotate the page in front</h2>
+    <div class="row">
+      <button data-tool="pen">Pen</button>
+      <button data-tool="rect">Rectangle</button>
+      <button data-tool="arrow">Arrow</button>
+      <button id="clear">Clear all, go live</button>
+    </div>
+  </section>
+
+  <div id="status">…</div>
+  <div id="err"></div>
+  <section><h2>Saved by the server</h2><ul id="files"></ul></section>
+  <script src="sidepanel.js"></script>
+</body>
+</html>

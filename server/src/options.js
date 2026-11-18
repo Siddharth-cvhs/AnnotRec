@@ -15,6 +15,7 @@ const CLIENT = path.resolve(HERE, "..", "..", "client");
  * @property {object}   [storage]         storage port (see storage.js); default: files in `recDir`
  * @property {object}   [converter]       converter port (see converter.js); default: FFmpeg
  * @property {false|Function} [guard]     request guard: default only this machine; false disables; or your own middleware
+ * @property {string[]} [allowedOrigins] extra exact origins that may call the API, e.g. ["chrome-extension://<id>"] (default: $ANNOTREC_ALLOWED_ORIGINS, comma separated)
  * @property {number}   [liveIdleMs]      kill an abandoned live conversion after this long (default 90 s)
  * @property {number}   [maxUploadBytes]  largest accepted upload (default 4 GB)
  * @property {string}   [samplePage]      the page shown until an address is chosen
@@ -28,6 +29,7 @@ export function normalizeOptions(o = {}) {
     storage: o.storage ?? null,
     converter: o.converter ?? null,
     guard: o.guard === undefined ? "loopback" : o.guard,
+    allowedOrigins: o.allowedOrigins ?? (process.env.ANNOTREC_ALLOWED_ORIGINS ?? "").split(",").map((s) => s.trim()).filter(Boolean),
     liveIdleMs: o.liveIdleMs ?? 90_000,
     maxUploadBytes: o.maxUploadBytes ?? 4 * 1024 ** 3,
     samplePage:

@@ -41,21 +41,28 @@ export class FFmpegConverter {
    *  - `aresample=async=1` keeps the voice in step with the picture.
    *  - `+faststart` puts the index first so the file plays while downloading.
    */
-  start(input, output, { quality = "standard", onProgress, signal } = {}) {
+  start(input, output, { quality = "standard", videoCopy = false, onProgress, signal } = {}) {
     const q = PRESETS[quality] ?? PRESETS.standard;
+    // videoCopy: the picture is already H.264 (the browser encoded it, usually in hardware), so it is only
+    // repackaged into the MP4. Almost no CPU, so a live conversion never falls behind; only the audio is converted.
+    const video = videoCopy
+      ? ["-c:v", "copy"]
+      : [
+          "-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2",
+          "-c:v", "libx264",
+          "-preset", q.preset,
+          "-crf", String(q.crf),
+          "-tune", "animation", // flat UI colours and sharp text
+          "-pix_fmt", "yuv420p",
+          "-fps_mode", "cfr",
+          "-r", "30",
+        ];
     const args = [
       "-y",
       "-nostats",
       "-progress", "pipe:1",
       "-i", input ?? "pipe:0",
-      "-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2",
-      "-c:v", "libx264",
-      "-preset", q.preset,
-      "-crf", String(q.crf),
-      "-tune", "animation", // flat UI colours and sharp text
-      "-pix_fmt", "yuv420p",
-      "-fps_mode", "cfr",
-      "-r", "30",
+      ...video,
       "-c:a", "aac",
       "-b:a", "128k",
       "-af", "aresample=async=1:first_pts=0",

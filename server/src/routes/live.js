@@ -5,7 +5,8 @@ export function liveRoutes(router, ctx) {
 
   router.post("/api/live", (req, res) => {
     const quality = converter.qualities.includes(req.query.quality) ? req.query.quality : converter.qualities[0];
-    res.json({ id: live.open(quality) });
+    // ?video=copy: the browser already sends H.264, only repackage it (see converter.js)
+    res.json({ id: live.open(quality, { videoCopy: req.query.video === "copy" }) });
   });
 
   router.post("/api/live/:id/chunk", async (req, res) => {

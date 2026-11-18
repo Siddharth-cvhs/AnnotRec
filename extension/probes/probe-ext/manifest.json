@@ -1,0 +1,9 @@
+{
+  "manifest_version": 3,
+  "name": "AnnotRec API probe",
+  "version": "0.0.1",
+  "permissions": ["tabCapture", "offscreen", "sidePanel", "activeTab", "scripting", "storage", "downloads", "tabs"],
+  "action": { "default_title": "probe" },
+  "background": { "service_worker": "sw.js" },
+  "commands": { "toggle": { "suggested_key": { "default": "Alt+Shift+A" }, "description": "Toggle" } }
+}

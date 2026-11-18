@@ -22,12 +22,13 @@ export class LiveSessions {
     this.sweeper.unref();
   }
 
-  open(quality) {
+  open(quality, { videoCopy = false } = {}) {
     const name = this.storage.newName("recording", "mp4", (n) => this.sessions.has(n));
     const abort = new AbortController();
     const s = { name, abort, lastSeen: Date.now(), ended: false, onProgress: null };
     const conv = this.converter.start(null, this.storage.partPath(name), {
       quality,
+      videoCopy,
       signal: abort.signal,
       onProgress: (ms) => s.onProgress?.(ms),
     });
