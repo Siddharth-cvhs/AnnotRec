@@ -77,6 +77,17 @@ try {
   await P.mouse.click(350, 340);
   check((await st()).shapes === n - 1, "eraser removes the shape you click", `${(await st()).shapes} shapes`);
 
+  await api("tool", "select");
+  const before = (await st()).firstShape.pts[0];
+  await drag(350, 120, 450, 170);
+  const s1 = await st();
+  check(s1.selected === true && Math.abs(s1.firstShape.pts[0].x - before.x - 100) < 3 && Math.abs(s1.firstShape.pts[0].y - before.y - 50) < 3, "select picks a shape and drags it where you move", `moved ${(s1.firstShape.pts[0].x - before.x).toFixed(0)},${(s1.firstShape.pts[0].y - before.y).toFixed(0)}`);
+  await P.keyboard.press("Delete");
+  const s2 = await st();
+  check(s2.shapes === n - 2 && s2.selected === false, "Delete removes the selected shape", `${s2.shapes} shapes`);
+  await P.mouse.click(900, 700); // empty spot
+  check((await st()).selected === false, "clicking empty space selects nothing");
+
   await P.keyboard.press("b");
   check((await st()).tool === "pen", "the B key switches to the pen");
 

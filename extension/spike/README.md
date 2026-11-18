@@ -20,7 +20,7 @@ node test/e2e.mjs          # full flow, 18 checks
 node test/robustness.mjs   # zoom and resize
 node test/panel.mjs        # side panel smoke test
 node test/pause.mjs        # pause/resume cuts the paused time (6 checks)
-node test/tools.mjs        # every drawing tool, undo/redo, eraser, shortcuts (16 checks)
+node test/tools.mjs        # every drawing tool, undo/redo, eraser, shortcuts (19 checks)
 ```
 They launch their own Edge and server on spare ports and clean up after themselves.
 
@@ -28,4 +28,4 @@ They launch their own Edge and server on spare ports and clean up after themselv
 `src/background.js` (service worker), `src/offscreen.js` (recorder), `src/content.js` (overlay and drawing), `src/sidepanel.*` (toolbar).
 
 ## Drawing tools
-Pen (B), Highlighter (H), Line (L), Arrow (A), Box (R), Circle (O), Text (T), Numbered marker (M), Eraser (E). Shift snaps lines and arrows to 45 degrees. Ctrl+Z / Ctrl+Shift+Z undo and redo, Esc clears everything and goes live. Colours and size are in the side panel.
+Select and move (V, Delete removes), Pen (B), Highlighter (H), Line (L), Arrow (A), Box (R), Circle (O), Text (T), Numbered marker (M), Eraser (E). Shift snaps lines and arrows to 45 degrees. Ctrl+Z / Ctrl+Shift+Z undo and redo, Esc clears everything and goes live. Colours and size are in the side panel.

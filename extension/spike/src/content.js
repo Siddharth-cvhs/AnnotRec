@@ -71,10 +71,12 @@
   }
 
   // ---------------------------------------------------------------- drawing
-  const TOOLS = ["pen", "highlighter", "line", "arrow", "rect", "ellipse", "text", "marker", "eraser"];
-  const KEYS = { b: "pen", h: "highlighter", l: "line", a: "arrow", r: "rect", o: "ellipse", t: "text", m: "marker", e: "eraser" };
+  const TOOLS = ["select", "pen", "highlighter", "line", "arrow", "rect", "ellipse", "text", "marker", "eraser"];
+  const KEYS = { v: "select", b: "pen", h: "highlighter", l: "line", a: "arrow", r: "rect", o: "ellipse", t: "text", m: "marker", e: "eraser" };
   let redoStack = [];
   let editor = null; // the open text box, if any
+  let selected = null; // the shape picked by the select tool
+  let dragFrom = null; // pointer position while moving it
 
   const fontSize = (w) => 14 + w * 3;
   const markerR = (w) => 10 + w * 2;
@@ -148,6 +150,34 @@
     ctx.restore();
   }
 
+  function bounds(s) {
+    const pad = Math.max(6, s.width) + 4;
+    let x1, y1, x2, y2;
+    if (s.pts) {
+      x1 = Math.min(...s.pts.map((p) => p.x)); x2 = Math.max(...s.pts.map((p) => p.x));
+      y1 = Math.min(...s.pts.map((p) => p.y)); y2 = Math.max(...s.pts.map((p) => p.y));
+    } else if (s.kind === "text") {
+      const size = fontSize(s.width), lines = s.text.split("\n");
+      x1 = s.a.x; y1 = s.a.y; x2 = s.a.x + Math.max(...lines.map((l) => l.length)) * size * 0.6; y2 = s.a.y + lines.length * size * 1.25;
+    } else if (s.kind === "marker") {
+      const r = markerR(s.width);
+      x1 = s.a.x - r; x2 = s.a.x + r; y1 = s.a.y - r; y2 = s.a.y + r;
+    } else {
+      x1 = Math.min(s.a.x, s.b.x); x2 = Math.max(s.a.x, s.b.x); y1 = Math.min(s.a.y, s.b.y); y2 = Math.max(s.a.y, s.b.y);
+    }
+    return { x: x1 - pad, y: y1 - pad, w: x2 - x1 + pad * 2, h: y2 - y1 + pad * 2 };
+  }
+  function shift(s, dx, dy) {
+    if (s.pts) s.pts.forEach((p) => ((p.x += dx), (p.y += dy)));
+    else for (const k of ["a", "b"]) if (s[k]) ((s[k].x += dx), (s[k].y += dy));
+  }
+  function deleteSelected() {
+    const i = shapes.indexOf(selected);
+    if (i >= 0) shapes.splice(i, 1);
+    selected = null;
+    paint();
+  }
+
   function paint() {
     if (!ctx) return;
     const dpr = devicePixelRatio || 1;
@@ -156,6 +186,15 @@
     let n = 0;
     shapes.forEach((s) => draw(s, s.kind === "marker" ? ++n : 0));
     if (draft) draw(draft, n + 1);
+    if (selected && shapes.includes(selected)) {
+      const b = bounds(selected);
+      ctx.save();
+      ctx.setLineDash([6, 4]);
+      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = "#5b8cff";
+      ctx.strokeRect(b.x, b.y, b.w, b.h);
+      ctx.restore();
+    }
   }
 
   // Distance helpers for the eraser.
@@ -209,6 +248,15 @@
     if (e.button !== 0) return;
     if (editor) closeEditor(true);
     const p = pt(e);
+    if (tool === "select") {
+      selected = [...shapes].reverse().find((s) => hit(s, p)) ?? null;
+      if (selected) {
+        cv.setPointerCapture(e.pointerId);
+        dragFrom = p;
+        cv.style.cursor = "move";
+      }
+      return paint();
+    }
     if (tool === "eraser") {
       cv.setPointerCapture(e.pointerId);
       draft = { kind: "eraser" };
@@ -226,6 +274,12 @@
   }
 
   function move(e) {
+    if (dragFrom && selected) {
+      const p = pt(e);
+      shift(selected, p.x - dragFrom.x, p.y - dragFrom.y);
+      dragFrom = p;
+      return paint();
+    }
     if (!draft) return;
     if (draft.kind === "eraser") return eraseAt(pt(e));
     if (draft.pts) draft.pts.push(pt(e));
@@ -242,6 +296,11 @@
   }
 
   function up() {
+    if (dragFrom) {
+      dragFrom = null;
+      cv.style.cursor = "crosshair";
+      return paint();
+    }
     if (draft && draft.kind !== "eraser") commit(draft);
     draft = null;
     paint();
@@ -258,11 +317,13 @@
   }
 
   const undo = () => {
+    selected = null;
     const s = shapes.pop();
     if (s) redoStack.push(s);
     paint();
   };
   const redo = () => {
+    selected = null;
     const s = redoStack.pop();
     if (s) shapes.push(s);
     paint();
@@ -306,6 +367,7 @@
     if (e.key === "Escape") clear();
     else if (mod && k === "z") (e.shiftKey ? redo : undo)();
     else if (mod && k === "y") redo();
+    else if ((e.key === "Delete" || e.key === "Backspace") && selected) deleteSelected();
     else if (!mod && !e.altKey && KEYS[k]) tool = KEYS[k];
     else used = false;
     if (used) (e.preventDefault(), e.stopPropagation());
@@ -331,6 +393,7 @@
   function clear() {
     if (!host) return;
     closeEditor(false);
+    selected = dragFrom = null;
     frozen = false;
     shapes = [];
     redoStack = [];
@@ -359,6 +422,7 @@
         return true;
       case "tool":
         if (TOOLS.includes(m.tool)) tool = m.tool;
+        if (tool !== "select") selected = null;
         if (m.color) color = m.color;
         if (m.width) width = m.width;
         reply({ ok: true });
@@ -376,7 +440,7 @@
         reply({ ok: true });
         return;
       case "state":
-        reply({ frozen, shapes: shapes.length, tool, color, width, canRedo: redoStack.length > 0 });
+        reply({ frozen, shapes: shapes.length, tool, color, width, canRedo: redoStack.length > 0, selected: !!selected, firstShape: shapes[0] ? JSON.parse(JSON.stringify(shapes[0])) : null });
         return;
     }
   });
