@@ -21,11 +21,13 @@ $("mic").onclick = async () => {
   }
 };
 $("start").onclick = () => run("start", { micOn: true });
+$("pause").onclick = () => run(paused ? "resume" : "pause");
 $("stop").onclick = () => run("stop");
 $("mute").onclick = (() => {
   let on = true;
   return () => run("setMic", (on = !on));
 })();
+let paused = false;
 const COLORS = ["#ef4444", "#f59e0b", "#facc15", "#22c55e", "#3b82f6", "#a855f7", "#ffffff", "#111827"];
 let color = COLORS[5];
 let tool = "pen";
@@ -62,9 +64,12 @@ $("clear").onclick = () => run("clear");
 
 async function refresh() {
   const s = await call("status");
+  paused = !!s?.paused;
+  $("pause").textContent = paused ? "Resume" : "Pause";
+  $("pause").disabled = !s?.recording;
   $("status").textContent = s?.error
     ? s.error
-    : `sharing: ${s.sharing}   calibrated: ${s.calibrated}\nrecording: ${s.recording}   ${(s.elapsedMs / 1000).toFixed(1)} s`;
+    : `sharing: ${s.sharing}   calibrated: ${s.calibrated}\nrecording: ${s.paused ? "paused" : s.recording}   ${(s.elapsedMs / 1000).toFixed(1)} s`;
   const p = await call("pageState");
   if (p && !p.error) {
     tool = p.tool ?? tool;

@@ -242,11 +242,38 @@ async function start({ micOn = true, quality = "standard", server = "http://loca
   S.timer = setInterval(tick, 1000 / 30);
   S.recorder.start(1000);
   S.startedAt = Date.now();
+  S.pausedAt = 0;
+  S.pausedTotal = 0;
   return { ok: true, out: S.out, micIssue: S.micIssue, codec: S.codecUsed, startedAt: S.startedAt };
+}
+
+// Pause: the recorder drops the paused time, so the MP4 simply continues where it left off.
+const elapsed = () => (S.recorder ? Date.now() - S.startedAt - S.pausedTotal - (S.pausedAt ? Date.now() - S.pausedAt : 0) : 0);
+
+function pause() {
+  if (!S.recorder) throw new Error("Not recording.");
+  if (S.pausedAt) return { ok: true, paused: true };
+  S.recorder.pause();
+  clearInterval(S.timer);
+  S.pausedAt = Date.now();
+  return { ok: true, paused: true };
+}
+
+function resume() {
+  if (!S.recorder) throw new Error("Not recording.");
+  if (!S.pausedAt) return { ok: true, paused: false };
+  S.pausedTotal += Date.now() - S.pausedAt;
+  S.pausedAt = 0;
+  S.lastTick = 0; // the gap while paused is not a stall
+  tick(); // the first picture after resuming is the page as it is now
+  S.recorder.resume();
+  S.timer = setInterval(tick, 1000 / 30);
+  return { ok: true, paused: false };
 }
 
 async function stop() {
   if (!S.recorder) throw new Error("Not recording.");
+  if (S.pausedAt) resume();
   clearInterval(S.timer);
   const recorder = S.recorder;
   const done = new Promise((r) => (recorder.onstop = r));
@@ -255,7 +282,7 @@ async function stop() {
   S.recorder = null;
   S.mic?.getTracks().forEach((t) => t.stop());
   S.mic = S.micTrack = null;
-  const durationMs = Date.now() - S.startedAt;
+  const durationMs = Date.now() - S.startedAt - S.pausedTotal;
   const saved = await S.upload.finish(durationMs);
   S.upload = null;
   let rawBase64 = null;
@@ -298,6 +325,10 @@ chrome.runtime.onMessage.addListener((m, _sender, reply) => {
         return start(m);
       case "stop":
         return stop();
+      case "pause":
+        return pause();
+      case "resume":
+        return resume();
       case "mic":
         if (S.micTrack) S.micTrack.enabled = !!m.on;
         return { ok: true };
@@ -306,7 +337,8 @@ chrome.runtime.onMessage.addListener((m, _sender, reply) => {
           sharing: !!S.track,
           calibrated: !!S.cal,
           recording: !!S.recorder,
-          elapsedMs: S.recorder ? Date.now() - S.startedAt : 0,
+          paused: !!S.pausedAt,
+          elapsedMs: elapsed(),
           frames: S.frames,
           geo: S.geo,
         };

@@ -340,4 +340,4 @@ The spike lives in `extension/spike` (plain-JS Manifest V3, Edge). It records th
 - Next phases: port the V2 core and ink engine into a Vite/TypeScript extension, polish "follow active tab", OPFS library, Studio page.
 
 ### Annotation tools (added after the first spike)
-Nine tools (pen, highlighter, line, arrow, box, circle, text, numbered marker, eraser), eight colours, size slider, undo/redo, keyboard shortcuts, all working on any page. `test/tools.mjs`: 16 of 16. Still not ported from Version 2: select-and-move shapes, pencil, pause/resume, screenshot, the library page, themes.
+Nine tools (pen, highlighter, line, arrow, box, circle, text, numbered marker, eraser), eight colours, size slider, undo/redo, keyboard shortcuts, all working on any page. `test/tools.mjs`: 16 of 16. Pause/resume is built (the paused time is cut from the MP4; `test/pause.mjs` 6 of 6). Still not ported from Version 2: select-and-move shapes, pencil, screenshot, the library page, themes.

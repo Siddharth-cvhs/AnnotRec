@@ -19,6 +19,7 @@ A Manifest V3 extension for **Microsoft Edge**. Record the page you are looking 
 node test/e2e.mjs          # full flow, 18 checks
 node test/robustness.mjs   # zoom and resize
 node test/panel.mjs        # side panel smoke test
+node test/pause.mjs        # pause/resume cuts the paused time (6 checks)
 node test/tools.mjs        # every drawing tool, undo/redo, eraser, shortcuts (16 checks)
 ```
 They launch their own Edge and server on spare ports and clean up after themselves.

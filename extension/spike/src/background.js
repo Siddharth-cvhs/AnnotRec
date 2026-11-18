@@ -72,6 +72,8 @@ const api = {
   },
 
   stop: () => off({ type: "stop" }),
+  pause: () => off({ type: "pause" }),
+  resume: () => off({ type: "resume" }),
   status: () => off({ type: "status" }),
   peek: () => off({ type: "peek" }),
   setMic: (on) => off({ type: "mic", on }),
