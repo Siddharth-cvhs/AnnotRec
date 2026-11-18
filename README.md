@@ -1,24 +1,63 @@
-# AnnotRec: Version 2 · Web app (React + Node.js)
+# AnnotRec: Version 3 · Browser extension (Microsoft Edge)
 
-Version 2 of AnnotRec: the same idea as Version 1 (the desktop app), rebuilt as a
-**web app you serve on a local port**. No exe, so you can change anything. Show a
-live page in a viewport, record it with your microphone, draw on it while you talk,
-freeze it while you explain, and download **one MP4**.
+Version 3 of AnnotRec turns the recorder into a **browser extension**. It works on whatever
+tab you are looking at: record the page with your microphone, switch tabs while recording,
+freeze the page and draw on it while you talk, press **Clear all** to go live again, and get
+**one MP4** made by our own FFmpeg server. Installed locally from this codebase (no store).
 
-## Which version is this?
+![Annotations drawn on a page](extension/docs/annotated-page.png)
 
-| | Version 1 | **Version 2 (this one)** |
-|---|---|---|
-| **Label** | DESKTOP APP, Windows `.exe` | **WEB APP, React + Node.js** |
-| **Branch / tag** | [`main`](../../tree/main) (default) · `v1.0.0` | **`version-2` · `v2.0.0`** |
-| **What you run** | A built `AnnotRec.exe` with its own windows | **A Node server, opened in Edge or Chrome at `http://localhost:4000`** (no exe) |
-| **Platform** | Windows 10 (1903+) and 11 only | **Anything that runs Node, with Edge or Chrome 104+** |
-| **Main languages** | Rust (recording) + TypeScript/React | **JavaScript (server) + TypeScript/React (client)** |
-| **Recording engine** | Native Windows capture and encoder, no FFmpeg | **The browser records, FFmpeg converts to MP4** |
-| **Built for** | A self-contained tool you just run | **Being extended with plugins and embedded in other apps** |
+| | Version 1 | Version 2 | **Version 3 (this branch)** |
+|---|---|---|---|
+| **Label** | DESKTOP APP, Windows `.exe` | WEB APP, React + Node.js | **BROWSER EXTENSION (Edge) + the Node server** |
+| **Branch / tag** | [`main`](../../tree/main) · `v1.0.0` | [`version-2`](../../tree/version-2) · `v2.0.0` | **`version-3`** |
+| **What you run** | `AnnotRec.exe` | Node server, page at `localhost:4000` | **The extension loaded in Edge + the Node server** |
+| **Records** | A window you pick | The viewport inside the web app | **Any tab, following you across tabs** |
+| **MP4 made by** | Native Windows encoder | FFmpeg | **FFmpeg (the same server as Version 2)** |
 
-You are reading **Version 2**. To get Version 1 instead:
-`git clone https://github.com/Siddharth-cvhs/AnnotRec.git` (it is the default branch).
+## Extension: tech stack
+- **Manifest V3 extension**, plain JavaScript (no build step beyond copying files): service worker, offscreen document (recorder), content script (drawing layer), side panel (controls).
+- **Capture**: `getDisplayMedia` window pick once, then the page is located and cropped by **self-calibration** (the page draws a magenta frame at its edges and the recorder finds it). Follows tab switches, zoom and window resize.
+- **Recording**: `MediaRecorder` (H.264 + Opus), microphone through `getUserMedia`. **Pause/resume** cuts the paused time.
+- **MP4**: pieces are sent live to the Version 2 Node server (`/api/live?video=copy`); FFmpeg repackages the picture and converts the audio to AAC, so **Stop takes under a second**.
+- **Drawing**: Shadow DOM in the browser's top layer; the page is frozen with `captureVisibleTab`.
+- **Tests**: Playwright driving real Edge (`extension/spike/test`).
+
+## Extension: quick start
+1. Install **Node.js 20+**, **FFmpeg** (on PATH) and **Microsoft Edge**.
+2. Get the code and install:
+   ```powershell
+   git clone -b version-3 https://github.com/Siddharth-cvhs/AnnotRec.git
+   cd AnnotRec
+   npm install
+   ```
+3. Start the server, allowing the extension (its id is fixed by `extension/spike/key.json`):
+   ```powershell
+   $env:ANNOTREC_ALLOWED_ORIGINS = "chrome-extension://kbgonanciofpceomfnheeabchhcjnjbb"
+   npm start
+   ```
+4. Build the extension (writes `extension/spike/dist`):
+   ```powershell
+   node extension/spike/build.mjs
+   ```
+5. In Edge open `edge://extensions`, switch on **Developer mode**, click **Load unpacked** and choose `extension/spike/dist`. Pin the AnnotRec icon.
+6. Open any website, click the icon to open the side panel, then **Share this browser window** (pick this Edge window, once) and **Allow microphone** (once).
+7. Press **Start**, talk, switch tabs, pick a tool to freeze and draw, **Clear all, go live**, **Pause/Resume**, then **Stop**. The MP4 is listed in the panel and saved in the server's `recordings` folder.
+
+![The side panel](extension/docs/side-panel.png)
+
+**Tools**: Select (V), Pen (B), Highlighter (H), Line (L), Arrow (A), Box (R), Circle (O), Text (T), Numbered marker (M), Eraser (E); 8 colours, size slider; Ctrl+Z / Ctrl+Shift+Z; Delete removes the selected shape; Esc clears and goes live; Shift snaps lines to 45 degrees.
+
+**Tests** (each launches its own Edge and server): `node extension/spike/test/e2e.mjs` (18 checks), `robustness.mjs` (4), `panel.mjs` (5), `pause.mjs` (6), `tools.mjs` (19).
+
+**Known limits**: Edge only so far (Chrome and Brave untested); moving a shape is not in the undo history; no pencil tool, screenshot button or library page yet in the extension; some company-managed browsers block unpacked extensions. Research, findings and the roadmap: [`extension/NOTES.md`](extension/NOTES.md).
+
+---
+
+# The Version 2 web app (included in this branch)
+
+The server above is the Version 2 server. Everything below describes the Version 2 web app
+(React + Node.js, served on a local port), which this branch still contains and runs.
 
 ## Tech stack (Version 2: React + Node.js web app)
 
