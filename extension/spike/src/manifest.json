@@ -3,10 +3,55 @@
   "name": "AnnotRec (spike)",
   "version": "0.0.1",
   "description": "Record any tab with a microphone, freeze the page and draw on it, and follow the active tab. Spike build.",
-  "permissions": ["desktopCapture", "offscreen", "sidePanel", "storage", "tabs", "scripting"],
-  "host_permissions": ["<all_urls>"],
-  "background": { "service_worker": "background.js" },
-  "side_panel": { "default_path": "sidepanel.html" },
-  "action": { "default_title": "AnnotRec" },
-  "content_scripts": [{ "matches": ["<all_urls>"], "js": ["content.js"], "run_at": "document_idle" }]
+  "permissions": [
+    "desktopCapture",
+    "offscreen",
+    "sidePanel",
+    "storage",
+    "tabs",
+    "scripting"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "side_panel": {
+    "default_path": "sidepanel.html"
+  },
+  "action": {
+    "default_title": "AnnotRec"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "commands": {
+    "toggle-record": {
+      "suggested_key": {
+        "default": "Alt+Shift+R"
+      },
+      "description": "Start or stop recording"
+    },
+    "toggle-pause": {
+      "suggested_key": {
+        "default": "Alt+Shift+P"
+      },
+      "description": "Pause or resume the recording"
+    },
+    "toggle-draw": {
+      "suggested_key": {
+        "default": "Alt+Shift+D"
+      },
+      "description": "Freeze the page to draw on it, or go live again"
+    }
+  }
 }

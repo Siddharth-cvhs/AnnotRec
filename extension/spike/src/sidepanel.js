@@ -92,13 +92,22 @@ $("start").onclick = async () => {
   if (r?.micIssue) showHelp(`${r.micIssue} Check the microphone in the browser and Windows settings.`);
 };
 $("pause").onclick = () => run(paused ? "resume" : "pause");
-$("stop").onclick = () => run("stop");
+$("stop").onclick = async () => {
+  const r = await run("stop");
+  if (r?.saved) {
+    lastSaved = r.saved.name;
+    $("toasttext").textContent = `Saved ✓ ${r.saved.name} (${(r.durationMs / 1000).toFixed(0)} s, ${(r.saved.size / 1e6).toFixed(1)} MB)`;
+    $("toast").hidden = false;
+  }
+};
+$("toastshow").onclick = () => lastSaved && run("reveal", lastSaved);
 $("mute").onclick = (() => {
   let on = true;
   return () => run("setMic", (on = !on));
 })();
 let paused = false;
 let folder = "";
+let lastSaved = "";
 const COLORS = ["#ef4444", "#f59e0b", "#facc15", "#22c55e", "#3b82f6", "#a855f7", "#ffffff", "#111827"];
 let color = COLORS[5];
 let tool = "pen";
@@ -133,11 +142,20 @@ $("undo").onclick = () => run("undo");
 $("redo").onclick = () => run("redo");
 $("clear").onclick = () => run("clear");
 
+let slowTick = 0;
 async function refresh() {
   const s = await call("status");
   paused = !!s?.paused;
   $("pause").textContent = paused ? "Resume" : "Pause";
   $("pause").disabled = !s?.recording;
+  const bar = $("recbar");
+  const state = s?.recording ? (s.paused ? "paused" : "rec") : "idle";
+  bar.className = `recbar ${state}`;
+  $("recstate").textContent = state === "rec" ? "Recording" : state === "paused" ? "Paused" : "Ready";
+  const sec = Math.floor((s?.elapsedMs ?? 0) / 1000);
+  $("clock").textContent = `${String(Math.floor(sec / 60)).padStart(2, "0")}:${String(sec % 60).padStart(2, "0")}`;
+  $("level").style.width = `${Math.min(100, Math.round(Math.sqrt(s?.micLevel ?? 0) * 100))}%`;
+  if (state === "rec") $("toast").hidden = true;
   $("status").textContent = s?.error
     ? s.error
     : `sharing: ${s.sharing}   calibrated: ${s.calibrated}\nrecording: ${s.paused ? "paused" : s.recording}   ${(s.elapsedMs / 1000).toFixed(1)} s`;
@@ -149,6 +167,7 @@ async function refresh() {
     $("undo").disabled = !p.frozen || !p.shapes;
     $("redo").disabled = !p.frozen || !p.canRedo;
   }
+  if (slowTick++ % 4) return;
   renderPerm();
   const files = await call("list");
   $("files").innerHTML = Array.isArray(files)
@@ -165,7 +184,7 @@ async function refresh() {
     } else if (h?.error || !h) $("folder").textContent = "The AnnotRec server is not reachable. Start it with npm start.";
   }
 }
-setInterval(refresh, 1000);
+setInterval(refresh, 300);
 refresh();
 
 $("openfolder").onclick = () => run("reveal");

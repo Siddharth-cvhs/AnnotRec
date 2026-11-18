@@ -35,6 +35,12 @@ const toTab = async (message) => chrome.tabs.sendMessage((await activeTab()).id,
 
 const serverUrl = async () => (await chrome.storage.local.get("server")).server ?? "http://localhost:4000";
 
+/** The toolbar icon says what is going on, even when the side panel is closed. */
+function badge(text, color) {
+  chrome.action.setBadgeText({ text }).catch(() => {});
+  if (color) chrome.action.setBadgeBackgroundColor({ color }).catch(() => {});
+}
+
 const api = {
   /** Where the AnnotRec server (our FFmpeg pipeline) is. */
   async setServer(url) {
@@ -70,12 +76,28 @@ const api = {
     // The recorder page has no storage access (offscreen pages only get the messaging API): pass the server address in.
     const { server } = await chrome.storage.local.get("server");
     const started = await off({ type: "start", server, ...options });
+    badge("REC", "#ef4444");
     return { ...started, calibration: cal };
   },
 
-  stop: () => off({ type: "stop" }),
-  pause: () => off({ type: "pause" }),
-  resume: () => off({ type: "resume" }),
+  async stop() {
+    badge("...", "#f59e0b"); // the MP4 is being finished
+    try {
+      return await off({ type: "stop" });
+    } finally {
+      badge("");
+    }
+  },
+  async pause() {
+    const r = await off({ type: "pause" });
+    badge("II", "#f59e0b");
+    return r;
+  },
+  async resume() {
+    const r = await off({ type: "resume" });
+    badge("REC", "#ef4444");
+    return r;
+  },
   status: () => off({ type: "status" }),
   peek: () => off({ type: "peek" }),
   setMic: (on) => off({ type: "mic", on }),
@@ -125,7 +147,7 @@ chrome.runtime.onMessage.addListener((m, sender, reply) => {
   }
   if (m?.type === "snapshot") {
     // A picture of the page (without our overlay, which is empty at that moment), to freeze it.
-    chrome.tabs.captureVisibleTab(sender.tab.windowId, { format: "png" }).then(
+    chrome.tabs.captureVisibleTab(sender.tab.windowId, { format: "jpeg", quality: 96 }).then(
       (url) => reply({ url }),
       (e) => reply({ error: String(e.message ?? e) }),
     );
@@ -147,3 +169,32 @@ chrome.runtime.onInstalled.addListener(async () => {
     chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ["content.js"] }).catch(() => {});
   }
 });
+
+// ------------------------------------------------------------------ keyboard shortcuts
+// Work from any page, so a demo never needs the mouse on the side panel. (Change them at edge://extensions/shortcuts.)
+async function onCommand(command, tab) {
+  try {
+    const s = await off({ type: "status" });
+    if (command === "toggle-record") {
+      if (s.recording) await api.stop();
+      else await api.start({ micOn: true });
+    } else if (command === "toggle-pause") {
+      if (s.recording) await (s.paused ? api.resume() : api.pause());
+    } else if (command === "toggle-draw") {
+      const p = await api.pageState();
+      if (p?.frozen) await api.clear();
+      else {
+        await api.freeze();
+        await api.tool(p?.tool ?? "pen");
+      }
+    }
+  } catch (e) {
+    self.lastCommandError = String(e.message ?? e);
+    // Not ready (window not shared, microphone not allowed...): show the side panel, which explains and fixes it.
+    badge("!", "#ef4444");
+    setTimeout(() => badge(""), 3000);
+    if (tab?.windowId) chrome.sidePanel.open({ windowId: tab.windowId }).catch(() => {});
+  }
+}
+self.onCommand = onCommand; // also callable from tests
+chrome.commands.onCommand.addListener(onCommand);

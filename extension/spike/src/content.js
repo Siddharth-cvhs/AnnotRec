@@ -81,6 +81,16 @@
   const fontSize = (w) => 14 + w * 3;
   const markerR = (w) => 10 + w * 2;
 
+  /** A freehand line as smooth curves through the midpoints of the recorded points (no visible corners). */
+  function smoothPath(pts) {
+    ctx.beginPath();
+    ctx.moveTo(pts[0].x, pts[0].y);
+    if (pts.length === 1) return ctx.lineTo(pts[0].x + 0.01, pts[0].y);
+    if (pts.length === 2) return ctx.lineTo(pts[1].x, pts[1].y);
+    for (let i = 1; i < pts.length - 1; i++) ctx.quadraticCurveTo(pts[i].x, pts[i].y, (pts[i].x + pts[i + 1].x) / 2, (pts[i].y + pts[i + 1].y) / 2);
+    ctx.lineTo(pts[pts.length - 1].x, pts[pts.length - 1].y);
+  }
+
   function draw(s, index) {
     ctx.save();
     ctx.lineCap = ctx.lineJoin = "round";
@@ -88,17 +98,14 @@
     ctx.lineWidth = s.width;
     switch (s.kind) {
       case "pen":
-        ctx.beginPath();
-        s.pts.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)));
-        if (s.pts.length === 1) ctx.lineTo(s.pts[0].x + 0.01, s.pts[0].y);
+        smoothPath(s.pts);
         ctx.stroke();
         break;
       case "highlighter":
         ctx.globalAlpha = 0.35;
         ctx.lineCap = "butt";
         ctx.lineWidth = s.width * 4;
-        ctx.beginPath();
-        s.pts.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)));
+        smoothPath(s.pts);
         ctx.stroke();
         break;
       case "line":
@@ -178,14 +185,46 @@
     paint();
   }
 
-  function paint() {
-    if (!ctx) return;
+  // Finished shapes live on a cached picture (`baseCv`); every frame only draws that picture plus the
+  // shape being drawn or moved. Painting is batched to one per animation frame.
+  let baseCv = null, baseCtx = null, baseDirty = true, baseSkip = null, raf = 0, markerBefore = new Map();
+
+  function rebuildBase() {
     const dpr = devicePixelRatio || 1;
+    if (!baseCv) {
+      baseCv = document.createElement("canvas");
+      baseCtx = baseCv.getContext("2d");
+    }
+    if (baseCv.width !== cv.width || baseCv.height !== cv.height) {
+      baseCv.width = cv.width;
+      baseCv.height = cv.height;
+    }
+    const live = ctx;
+    ctx = baseCtx;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, baseCv.width, baseCv.height);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.clearRect(0, 0, innerWidth, innerHeight);
     let n = 0;
-    shapes.forEach((s) => draw(s, s.kind === "marker" ? ++n : 0));
-    if (draft) draw(draft, n + 1);
+    markerBefore = new Map();
+    for (const s of shapes) {
+      if (s.kind === "marker") markerBefore.set(s, ++n);
+      if (s !== baseSkip) draw(s, markerBefore.get(s) ?? 0);
+    }
+    ctx = live;
+    baseDirty = false;
+  }
+
+  function render() {
+    raf = 0;
+    if (!ctx || !cv) return;
+    const dpr = devicePixelRatio || 1;
+    if (baseDirty) rebuildBase();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, cv.width, cv.height);
+    ctx.drawImage(baseCv, 0, 0);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    if (baseSkip && shapes.includes(baseSkip)) draw(baseSkip, markerBefore.get(baseSkip) ?? 0);
+    if (draft) draw(draft, markerBefore.size + 1);
     if (selected && shapes.includes(selected)) {
       const b = bounds(selected);
       ctx.save();
@@ -195,6 +234,12 @@
       ctx.strokeRect(b.x, b.y, b.w, b.h);
       ctx.restore();
     }
+  }
+
+  /** Ask for a repaint. `draftOnly`: only the shape being drawn or moved changed (the cheap, frequent case). */
+  function paint(draftOnly = false) {
+    if (!draftOnly) baseDirty = true;
+    if (!raf) raf = requestAnimationFrame(render);
   }
 
   // Distance helpers for the eraser.
@@ -250,6 +295,7 @@
     const p = pt(e);
     if (tool === "select") {
       selected = [...shapes].reverse().find((s) => hit(s, p)) ?? null;
+      baseSkip = selected;
       if (selected) {
         cv.setPointerCapture(e.pointerId);
         dragFrom = p;
@@ -270,7 +316,7 @@
     }
     cv.setPointerCapture(e.pointerId);
     draft = tool === "pen" || tool === "highlighter" ? { kind: tool, color, width, pts: [p] } : { kind: tool, color, width, a: p, b: p };
-    paint();
+    paint(true);
   }
 
   function move(e) {
@@ -278,12 +324,17 @@
       const p = pt(e);
       shift(selected, p.x - dragFrom.x, p.y - dragFrom.y);
       dragFrom = p;
-      return paint();
+      return paint(true);
     }
     if (!draft) return;
     if (draft.kind === "eraser") return eraseAt(pt(e));
-    if (draft.pts) draft.pts.push(pt(e));
-    else {
+    if (draft.pts) {
+      // every point the pointer passed through since the last frame, dropping near-duplicates
+      for (const ev of e.getCoalescedEvents?.() ?? [e]) {
+        const q = pt(ev), last = draft.pts[draft.pts.length - 1];
+        if (Math.hypot(q.x - last.x, q.y - last.y) >= 1.5) draft.pts.push(q);
+      }
+    } else {
       draft.b = pt(e);
       if (e.shiftKey && (draft.kind === "line" || draft.kind === "arrow")) {
         // Shift: snap to 45 degree steps
@@ -292,12 +343,13 @@
         draft.b = { x: draft.a.x + len * Math.cos(ang), y: draft.a.y + len * Math.sin(ang) };
       }
     }
-    paint();
+    paint(true);
   }
 
   function up() {
     if (dragFrom) {
       dragFrom = null;
+      baseSkip = null;
       cv.style.cursor = "crosshair";
       return paint();
     }
@@ -393,7 +445,7 @@
   function clear() {
     if (!host) return;
     closeEditor(false);
-    selected = dragFrom = null;
+    selected = dragFrom = baseSkip = null;
     frozen = false;
     shapes = [];
     redoStack = [];

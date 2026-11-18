@@ -50,6 +50,8 @@ freeze the page and draw on it while you talk, press **Clear all** to go live ag
 
 **Tests** (each launches its own Edge and server): `node extension/spike/test/e2e.mjs` (18 checks), `robustness.mjs` (4), `panel.mjs` (12), `pause.mjs` (6), `tools.mjs` (19), `perf.mjs` (3).
 
+**Demo mode**: Alt+Shift+R start/stop, Alt+Shift+P pause/resume, Alt+Shift+D draw/go live, from any page. The toolbar icon shows REC / II, and the panel shows a clock and a microphone level meter.
+
 **Permissions**: the first time, **Allow microphone** opens a tab where the browser asks; if it is refused you see `Microphone: Permission denied` with buttons for Edge's and Windows' microphone settings. Start opens the window picker by itself when needed.
 
 **Where the videos are saved**: in the server's `recordings` folder (`react-and-node/recordings`, or the folder in the `REC_DIR` environment variable). The side panel shows the path, with **Open folder**, **Copy path** and **Show** per file.

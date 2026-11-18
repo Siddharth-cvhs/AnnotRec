@@ -214,7 +214,10 @@ async function start({ micOn = true, quality = "standard", server = "http://loca
         if (done) break;
         const buf = new Float32Array(value.numberOfFrames);
         try { value.copyTo(buf, { planeIndex: 0, format: "f32-planar" }); } catch { /* format not available */ }
-        for (const x of buf) S.micPeak = Math.max(S.micPeak, Math.abs(x));
+        let chunk = 0;
+        for (const x of buf) chunk = Math.max(chunk, Math.abs(x));
+        S.micPeak = Math.max(S.micPeak, chunk);
+        S.micLevel = Math.max(chunk, (S.micLevel || 0) * 0.97); // for the level meter: quick up, slow down
         value.close();
       }
     })();
@@ -340,6 +343,8 @@ chrome.runtime.onMessage.addListener((m, _sender, reply) => {
           calibrated: !!S.cal,
           recording: !!S.recorder,
           paused: !!S.pausedAt,
+          micLevel: S.recorder && S.micTrack?.enabled ? Number((S.micLevel || 0).toFixed(3)) : 0,
+          micOn: S.micTrack ? S.micTrack.enabled : null,
           elapsedMs: elapsed(),
           frames: S.frames,
           geo: S.geo,
