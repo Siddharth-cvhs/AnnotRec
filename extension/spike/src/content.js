@@ -39,7 +39,8 @@
       "background:transparent;overflow:visible;z-index:2147483647;pointer-events:none;";
     root = host.attachShadow({ mode: "closed" });
     root.innerHTML = `<style>
-      img,canvas,div{position:fixed;left:0;top:0;width:100vw;height:100vh;display:none}
+      img,canvas,#mk{position:fixed;left:0;top:0;width:100vw;height:100vh;display:none}
+      .ed{position:fixed;min-width:40px;min-height:1.25em;outline:2px dashed rgba(91,140,255,.9);outline-offset:3px;white-space:pre;pointer-events:auto;background:rgba(255,255,255,.04)}
       canvas{pointer-events:none;touch-action:none}
       #mk{border:8px solid rgb(255,0,255);box-sizing:border-box;pointer-events:none}
     </style><img id="bg" alt=""><canvas id="cv"></canvas><div id="mk"></div>`;
@@ -53,11 +54,12 @@
     } catch {
       /* older browsers: the high z-index still works */
     }
+    cv.addEventListener("mousedown", (e) => e.preventDefault()); // a click must not steal focus from the text box
     cv.addEventListener("pointerdown", down);
     cv.addEventListener("pointermove", move);
     cv.addEventListener("pointerup", up);
     cv.addEventListener("pointercancel", up);
-    addEventListener("keydown", (e) => e.key === "Escape" && frozen && (e.stopPropagation(), clear()), true);
+    addEventListener("keydown", onKey, true);
     addEventListener("resize", () => frozen && resizeCanvas());
   }
 
@@ -69,30 +71,79 @@
   }
 
   // ---------------------------------------------------------------- drawing
-  function draw(s) {
+  const TOOLS = ["pen", "highlighter", "line", "arrow", "rect", "ellipse", "text", "marker", "eraser"];
+  const KEYS = { b: "pen", h: "highlighter", l: "line", a: "arrow", r: "rect", o: "ellipse", t: "text", m: "marker", e: "eraser" };
+  let redoStack = [];
+  let editor = null; // the open text box, if any
+
+  const fontSize = (w) => 14 + w * 3;
+  const markerR = (w) => 10 + w * 2;
+
+  function draw(s, index) {
     ctx.save();
     ctx.lineCap = ctx.lineJoin = "round";
     ctx.strokeStyle = ctx.fillStyle = s.color;
     ctx.lineWidth = s.width;
-    if (s.kind === "pen") {
-      ctx.beginPath();
-      s.pts.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)));
-      ctx.stroke();
-    } else if (s.kind === "rect") {
-      ctx.strokeRect(Math.min(s.a.x, s.b.x), Math.min(s.a.y, s.b.y), Math.abs(s.b.x - s.a.x), Math.abs(s.b.y - s.a.y));
-    } else if (s.kind === "arrow") {
-      ctx.beginPath();
-      ctx.moveTo(s.a.x, s.a.y);
-      ctx.lineTo(s.b.x, s.b.y);
-      ctx.stroke();
-      const ang = Math.atan2(s.b.y - s.a.y, s.b.x - s.a.x);
-      const head = Math.max(14, s.width * 4);
-      ctx.beginPath();
-      ctx.moveTo(s.b.x, s.b.y);
-      ctx.lineTo(s.b.x - head * Math.cos(ang - 0.45), s.b.y - head * Math.sin(ang - 0.45));
-      ctx.lineTo(s.b.x - head * Math.cos(ang + 0.45), s.b.y - head * Math.sin(ang + 0.45));
-      ctx.closePath();
-      ctx.fill();
+    switch (s.kind) {
+      case "pen":
+        ctx.beginPath();
+        s.pts.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)));
+        if (s.pts.length === 1) ctx.lineTo(s.pts[0].x + 0.01, s.pts[0].y);
+        ctx.stroke();
+        break;
+      case "highlighter":
+        ctx.globalAlpha = 0.35;
+        ctx.lineCap = "butt";
+        ctx.lineWidth = s.width * 4;
+        ctx.beginPath();
+        s.pts.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)));
+        ctx.stroke();
+        break;
+      case "line":
+      case "arrow": {
+        ctx.beginPath();
+        ctx.moveTo(s.a.x, s.a.y);
+        ctx.lineTo(s.b.x, s.b.y);
+        ctx.stroke();
+        if (s.kind === "arrow") {
+          const ang = Math.atan2(s.b.y - s.a.y, s.b.x - s.a.x);
+          const head = Math.max(14, s.width * 4);
+          ctx.beginPath();
+          ctx.moveTo(s.b.x, s.b.y);
+          ctx.lineTo(s.b.x - head * Math.cos(ang - 0.45), s.b.y - head * Math.sin(ang - 0.45));
+          ctx.lineTo(s.b.x - head * Math.cos(ang + 0.45), s.b.y - head * Math.sin(ang + 0.45));
+          ctx.closePath();
+          ctx.fill();
+        }
+        break;
+      }
+      case "rect":
+        ctx.strokeRect(Math.min(s.a.x, s.b.x), Math.min(s.a.y, s.b.y), Math.abs(s.b.x - s.a.x), Math.abs(s.b.y - s.a.y));
+        break;
+      case "ellipse":
+        ctx.beginPath();
+        ctx.ellipse((s.a.x + s.b.x) / 2, (s.a.y + s.b.y) / 2, Math.abs(s.b.x - s.a.x) / 2, Math.abs(s.b.y - s.a.y) / 2, 0, 0, Math.PI * 2);
+        ctx.stroke();
+        break;
+      case "text": {
+        const size = fontSize(s.width);
+        ctx.font = `600 ${size}px "Segoe UI", system-ui, sans-serif`;
+        ctx.textBaseline = "top";
+        s.text.split("\n").forEach((line, i) => ctx.fillText(line, s.a.x, s.a.y + i * size * 1.25));
+        break;
+      }
+      case "marker": {
+        const r = markerR(s.width);
+        ctx.beginPath();
+        ctx.arc(s.a.x, s.a.y, r, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = "#fff";
+        ctx.font = `700 ${r * 1.1}px "Segoe UI", system-ui, sans-serif`;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(String(index), s.a.x, s.a.y + 1);
+        break;
+      }
     }
     ctx.restore();
   }
@@ -102,31 +153,162 @@
     const dpr = devicePixelRatio || 1;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, innerWidth, innerHeight);
-    shapes.forEach(draw);
-    if (draft) draw(draft);
+    let n = 0;
+    shapes.forEach((s) => draw(s, s.kind === "marker" ? ++n : 0));
+    if (draft) draw(draft, n + 1);
+  }
+
+  // Distance helpers for the eraser.
+  const segDist = (p, a, b) => {
+    const dx = b.x - a.x, dy = b.y - a.y;
+    const t = dx || dy ? Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / (dx * dx + dy * dy))) : 0;
+    return Math.hypot(p.x - (a.x + t * dx), p.y - (a.y + t * dy));
+  };
+  function hit(s, p) {
+    const tol = Math.max(8, s.width) + 4;
+    switch (s.kind) {
+      case "pen":
+      case "highlighter": {
+        const t = s.kind === "highlighter" ? s.width * 2 + 4 : tol;
+        return s.pts.some((q, i) => (i ? segDist(p, s.pts[i - 1], q) : Math.hypot(p.x - q.x, p.y - q.y)) <= t);
+      }
+      case "line":
+      case "arrow":
+        return segDist(p, s.a, s.b) <= tol;
+      case "rect": {
+        const x1 = Math.min(s.a.x, s.b.x), x2 = Math.max(s.a.x, s.b.x), y1 = Math.min(s.a.y, s.b.y), y2 = Math.max(s.a.y, s.b.y);
+        return (
+          segDist(p, { x: x1, y: y1 }, { x: x2, y: y1 }) <= tol || segDist(p, { x: x2, y: y1 }, { x: x2, y: y2 }) <= tol ||
+          segDist(p, { x: x2, y: y2 }, { x: x1, y: y2 }) <= tol || segDist(p, { x: x1, y: y2 }, { x: x1, y: y1 }) <= tol
+        );
+      }
+      case "ellipse": {
+        const rx = Math.abs(s.b.x - s.a.x) / 2 || 1, ry = Math.abs(s.b.y - s.a.y) / 2 || 1;
+        const d = Math.hypot((p.x - (s.a.x + s.b.x) / 2) / rx, (p.y - (s.a.y + s.b.y) / 2) / ry);
+        return Math.abs(d - 1) * Math.min(rx, ry) <= tol;
+      }
+      case "text": {
+        const size = fontSize(s.width);
+        const lines = s.text.split("\n");
+        const w = Math.max(...lines.map((l) => l.length)) * size * 0.6;
+        return p.x >= s.a.x - 4 && p.x <= s.a.x + w + 4 && p.y >= s.a.y - 4 && p.y <= s.a.y + lines.length * size * 1.25 + 4;
+      }
+      case "marker":
+        return Math.hypot(p.x - s.a.x, p.y - s.a.y) <= markerR(s.width) + 4;
+    }
+    return false;
   }
 
   const pt = (e) => ({ x: e.clientX, y: e.clientY });
+  const commit = (s) => {
+    shapes.push(s);
+    redoStack = [];
+  };
 
   function down(e) {
     if (e.button !== 0) return;
-    cv.setPointerCapture(e.pointerId);
+    if (editor) closeEditor(true);
     const p = pt(e);
-    draft = tool === "pen" ? { kind: "pen", color, width, pts: [p] } : { kind: tool, color, width, a: p, b: p };
+    if (tool === "eraser") {
+      cv.setPointerCapture(e.pointerId);
+      draft = { kind: "eraser" };
+      eraseAt(p);
+      return;
+    }
+    if (tool === "text") return openEditor(p);
+    if (tool === "marker") {
+      commit({ kind: "marker", color, width, a: p });
+      return paint();
+    }
+    cv.setPointerCapture(e.pointerId);
+    draft = tool === "pen" || tool === "highlighter" ? { kind: tool, color, width, pts: [p] } : { kind: tool, color, width, a: p, b: p };
     paint();
   }
 
   function move(e) {
     if (!draft) return;
-    if (draft.kind === "pen") draft.pts.push(pt(e));
-    else draft.b = pt(e);
+    if (draft.kind === "eraser") return eraseAt(pt(e));
+    if (draft.pts) draft.pts.push(pt(e));
+    else {
+      draft.b = pt(e);
+      if (e.shiftKey && (draft.kind === "line" || draft.kind === "arrow")) {
+        // Shift: snap to 45 degree steps
+        const ang = Math.round(Math.atan2(draft.b.y - draft.a.y, draft.b.x - draft.a.x) / (Math.PI / 4)) * (Math.PI / 4);
+        const len = Math.hypot(draft.b.x - draft.a.x, draft.b.y - draft.a.y);
+        draft.b = { x: draft.a.x + len * Math.cos(ang), y: draft.a.y + len * Math.sin(ang) };
+      }
+    }
     paint();
   }
 
   function up() {
-    if (draft) shapes.push(draft);
+    if (draft && draft.kind !== "eraser") commit(draft);
     draft = null;
     paint();
+  }
+
+  function eraseAt(p) {
+    for (let i = shapes.length - 1; i >= 0; i--) {
+      if (hit(shapes[i], p)) {
+        shapes.splice(i, 1);
+        paint();
+        return;
+      }
+    }
+  }
+
+  const undo = () => {
+    const s = shapes.pop();
+    if (s) redoStack.push(s);
+    paint();
+  };
+  const redo = () => {
+    const s = redoStack.pop();
+    if (s) shapes.push(s);
+    paint();
+  };
+
+  // ------------------------------------------------------------------- text
+  function openEditor(p) {
+    editor = document.createElement("div");
+    editor.contentEditable = "plaintext-only";
+    editor.className = "ed";
+    const size = fontSize(width);
+    editor.style.cssText = `left:${p.x}px;top:${p.y}px;font:600 ${size}px "Segoe UI",system-ui,sans-serif;color:${color};line-height:1.25`;
+    editor.dataset.x = p.x;
+    editor.dataset.y = p.y;
+    root.appendChild(editor);
+    editor.addEventListener("keydown", (e) => {
+      e.stopPropagation();
+      if (e.key === "Escape") closeEditor(false);
+      else if (e.key === "Enter" && !e.shiftKey) (e.preventDefault(), closeEditor(true));
+    });
+    editor.addEventListener("blur", () => closeEditor(true));
+    editor.focus();
+  }
+
+  function closeEditor(keep) {
+    if (!editor) return;
+    const ed = editor;
+    editor = null;
+    const text = ed.innerText.replace(/\s+$/, "");
+    ed.remove();
+    if (keep && text) commit({ kind: "text", color: ed.style.color, width, text, a: { x: Number(ed.dataset.x), y: Number(ed.dataset.y) } });
+    paint();
+  }
+
+  // --------------------------------------------------------------- shortcuts
+  function onKey(e) {
+    if (!frozen || editor) return;
+    const k = e.key.toLowerCase();
+    const mod = e.ctrlKey || e.metaKey;
+    let used = true;
+    if (e.key === "Escape") clear();
+    else if (mod && k === "z") (e.shiftKey ? redo : undo)();
+    else if (mod && k === "y") redo();
+    else if (!mod && !e.altKey && KEYS[k]) tool = KEYS[k];
+    else used = false;
+    if (used) (e.preventDefault(), e.stopPropagation());
   }
 
   // ------------------------------------------------------------- freeze / clear
@@ -148,8 +330,10 @@
 
   function clear() {
     if (!host) return;
+    closeEditor(false);
     frozen = false;
     shapes = [];
+    redoStack = [];
     draft = null;
     bg.style.display = "none";
     cv.style.display = "none";
@@ -174,9 +358,17 @@
         freeze().then(reply, (e) => reply({ error: String(e.message ?? e) }));
         return true;
       case "tool":
-        tool = m.tool;
+        if (TOOLS.includes(m.tool)) tool = m.tool;
         if (m.color) color = m.color;
         if (m.width) width = m.width;
+        reply({ ok: true });
+        return;
+      case "undo":
+        undo();
+        reply({ ok: true });
+        return;
+      case "redo":
+        redo();
         reply({ ok: true });
         return;
       case "clear":
@@ -184,7 +376,7 @@
         reply({ ok: true });
         return;
       case "state":
-        reply({ frozen, shapes: shapes.length, tool });
+        reply({ frozen, shapes: shapes.length, tool, color, width, canRedo: redoStack.length > 0 });
         return;
     }
   });

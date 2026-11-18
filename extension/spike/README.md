@@ -19,8 +19,12 @@ A Manifest V3 extension for **Microsoft Edge**. Record the page you are looking 
 node test/e2e.mjs          # full flow, 18 checks
 node test/robustness.mjs   # zoom and resize
 node test/panel.mjs        # side panel smoke test
+node test/tools.mjs        # every drawing tool, undo/redo, eraser, shortcuts (16 checks)
 ```
 They launch their own Edge and server on spare ports and clean up after themselves.
 
 ## Files
 `src/background.js` (service worker), `src/offscreen.js` (recorder), `src/content.js` (overlay and drawing), `src/sidepanel.*` (toolbar).
+
+## Drawing tools
+Pen (B), Highlighter (H), Line (L), Arrow (A), Box (R), Circle (O), Text (T), Numbered marker (M), Eraser (E). Shift snaps lines and arrows to 45 degrees. Ctrl+Z / Ctrl+Shift+Z undo and redo, Esc clears everything and goes live. Colours and size are in the side panel.

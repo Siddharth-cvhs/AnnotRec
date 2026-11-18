@@ -79,6 +79,8 @@ const api = {
   // --- annotation (drives the page in front)
   freeze: () => toTab({ type: "freeze" }),
   tool: (tool, extra = {}) => toTab({ type: "tool", tool, ...extra }),
+  undo: () => toTab({ type: "undo" }),
+  redo: () => toTab({ type: "redo" }),
   clear: () => toTab({ type: "clear" }),
   pageState: () => toTab({ type: "state" }),
 
