@@ -106,3 +106,13 @@ Other numbers: at most five visible hitches (over 100 ms) in a whole recording, 
 - **On the page:** the pointer matches the tool (crosshair, I-beam for text, an arrow that turns into a move cross over a shape you can move), and the drawing fades out when you clear it.
 - **Keyboard and screen readers:** every control has a label, messages are announced, focus is always visible, and the part of the panel that is out of sight cannot be reached by Tab.
 - Pictures of every state (light and dark) are made by `node test/uxshots.mjs <folder>`.
+
+## Browser pages and shared screens
+**Drawing on browser pages (new tab, settings, the extension store).** Browsers do not let any extension run code on those pages, so the pen cannot be placed on them directly. AnnotRec gets around it with a **drawing board**: when you press a tool on such a page, it opens a tab of its own that shows a picture of that page (cut from the shared window), and the normal tools work on it. The video shows the same thing, because the picture is the page. **Clear all** (or **Esc**) closes the board and puts you back on the real page. It needs the window to be shared first (Get ready, step 2); the panel says so. The same board is used if an ordinary website refuses the extension's script (a company policy, a local file).
+
+**Sharing an entire screen or a second screen.** Both work: choose **Entire screen** in the browser's picker. AnnotRec finds the browser page inside the screen picture and records only that, so the browser has to be on the screen you shared. The panel names what is shared ("Entire screen · 1920×1080 (the browser must be on it)" or "Browser window"), and if the page is not on the shared screen, Start says so in plain words.
+
+**Seeing which screen is shared, lightly.** Two quiet signs, both optional in Settings:
+- a short notice (about 2 seconds, top right of the browser window) when you press **Share**: "Sharing this screen", "Sharing this browser window"; it appears on the screen where the browser is, which is the screen that is being recorded;
+- a thin, soft line at the very edge of the page: blue while sharing, red while recording, amber while paused. It is never animated and **never in the video**: the recorder cuts the page 4 pixels inside its edges, and `test/sharing.mjs` checks the outer rows and columns of a recorded video.
+A border around a whole second screen would need a small native program (a browser extension cannot draw outside the browser), so that is not done here.

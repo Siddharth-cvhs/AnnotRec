@@ -39,6 +39,93 @@ async function activeTab() {
 
 const toTab = async (message) => chrome.tabs.sendMessage((await activeTab()).id, message);
 
+// ------------------------------------------------------------------ browser pages: drawing on a picture of them
+// A browser page (new tab, settings, the extension store...) cannot run our drawing code. For those, drawing happens
+// on a "board": a tab of our own that shows a picture of the page, with the normal drawing code on top of it.
+// "Clear all" closes the board and returns to the real page.
+const BOARD_URL = chrome.runtime.getURL("board.html");
+const isBoard = (url) => !!url && url.startsWith(BOARD_URL);
+const isRestricted = (url) =>
+  !url ||
+  /^(chrome|edge|brave|opera|vivaldi|about|devtools|view-source|chrome-search|chrome-untrusted|chrome-error):/i.test(url) ||
+  (/^chrome-extension:/i.test(url) && !isBoard(url)) ||
+  /^https:\/\/(chromewebstore\.google\.com|chrome\.google\.com\/webstore|microsoftedge\.microsoft\.com\/addons)/i.test(url);
+
+async function pictureOf(tab) {
+  try {
+    const r = await off({ type: "pagePicture", w: tab.width, h: tab.height });
+    if (r.url) return r.url;
+  } catch {
+    /* not shared yet, or not measured: below */
+  }
+  if (!isRestricted(tab.url)) {
+    // an ordinary page that refused our script: the browser's own page picture still works
+    try {
+      return await chrome.tabs.captureVisibleTab(tab.windowId, { format: "jpeg", quality: 96 });
+    } catch {
+      /* below */
+    }
+  }
+  throw new Error("To draw on a browser page, share the window first (Get ready, step 2) while a normal website is open. AnnotRec then draws on a picture of this page.");
+}
+
+async function openBoard(tab) {
+  const shot = await pictureOf(tab);
+  await chrome.storage.session.set({ boardShot: shot });
+  const board = await chrome.tabs.create({ url: `${BOARD_URL}?o=${tab.id}`, index: tab.index + 1, windowId: tab.windowId, active: true });
+  // ready = the picture is loaded and the drawing code is running in it
+  for (let i = 0; i < 100; i++) {
+    try {
+      if ((await chrome.tabs.sendMessage(board.id, { type: "boardReady" }))?.ready) break;
+    } catch {
+      /* the page is still loading */
+    }
+    await sleep(30);
+  }
+  return board;
+}
+
+async function closeBoard(tab) {
+  let origin = 0;
+  try {
+    origin = Number(new URL(tab.url).searchParams.get("o"));
+  } catch {
+    /* no address */
+  }
+  if (origin) await chrome.tabs.update(origin, { active: true }).catch(() => {});
+  await chrome.tabs.remove(tab.id).catch(() => {});
+}
+
+// ------------------------------------------------------------------ the light frame and the notice while sharing
+async function prefs() {
+  const s = await chrome.storage.local.get(["indicator", "announce"]);
+  return { indicator: s.indicator ?? true, announce: s.announce ?? true };
+}
+/** mode: "off" | "shared" | "rec" | "paused". Every page shows a light frame at its edge in that colour (or none). */
+async function setIndicator(mode) {
+  const shown = (await prefs()).indicator ? mode : "off";
+  await chrome.storage.session.set({ indicatorMode: shown, indicatorWanted: mode }).catch(() => {});
+  for (const t of await chrome.tabs.query({})) chrome.tabs.sendMessage(t.id, { type: "indicator", mode: shown }).catch(() => {});
+}
+/** A short, quiet notice at the top right of the browser window, so you can tell which screen is being shared. */
+async function announceShare(surface) {
+  if (!(await prefs()).announce) return;
+  const win = await chrome.windows.getLastFocused({ windowTypes: ["normal"] }).catch(() => null);
+  if (!win) return;
+  const w = 360, h = 104;
+  chrome.windows
+    .create({
+      url: chrome.runtime.getURL(`sharing.html?kind=${encodeURIComponent(surface ?? "window")}`),
+      type: "popup",
+      width: w,
+      height: h,
+      left: Math.max(0, (win.left ?? 0) + (win.width ?? 900) - w - 16),
+      top: Math.max(0, (win.top ?? 0) + 6),
+      focused: false,
+    })
+    .catch(() => {});
+}
+
 const serverUrl = async () => (await chrome.storage.local.get("server")).server ?? "http://localhost:4000";
 
 /** The toolbar icon says what is going on, even when the side panel is closed. */
@@ -90,9 +177,11 @@ const api = {
   },
 
   /** Share the browser window, once. The picture follows whichever tab is in front. */
-  async pick() {
+  async pick({ announce = false } = {}) {
     await ensureOffscreen();
     const shared = await off({ type: "attachDisplay" });
+    setIndicator("shared");
+    if (announce) announceShare(shared.surface); // only when a person pressed Share (not in automated runs)
     // Now that the window is shared, do the slow one-time things so that Start is quick: measure where the page sits
     // in the window picture, and warm up the audio system.
     ensureCalibrated().catch(() => {});
@@ -138,16 +227,20 @@ const api = {
     await off({ type: "prepare", server, ...options });
     try {
       // 2. ...while the server is checked and the page is measured (if it was not measured already).
-      const [, cal] = await Promise.all([api.preflight(), ensureCalibrated()]);
+      // (a measurement that did not find the page is tried once more: the marker can reach the capture a moment late)
+      const measure = () => ensureCalibrated().catch((e) => (/cannot (see|find)/i.test(String(e.message)) ? api.calibrate() : Promise.reject(e)));
+      const [, cal] = await Promise.all([api.preflight(), measure()]);
       const t1 = performance.now();
       await off({ type: "geometry", ...(await toTab({ type: "marker", on: false })) });
       const t2 = performance.now();
       const started = await off({ type: "start", server, ...options });
       badge("REC", "#ef4444");
+      setIndicator("rec");
       const t3 = performance.now();
       return { ...started, calibration: cal, timings: { checkAndMeasureMs: Math.round(t1 - t0), geometryMs: Math.round(t2 - t1), recorderMs: Math.round(t3 - t2), totalMs: Math.round(t3 - t0), inside: started.timings } };
     } catch (e) {
       await off({ type: "cancelPrepare" }).catch(() => {});
+      await calibrating?.catch(() => {}); // a measurement still under way finishes (and takes its marker away) before the next try
       throw e;
     }
   },
@@ -158,16 +251,19 @@ const api = {
       return await off({ type: "stop" });
     } finally {
       badge("");
+      setIndicator((await off({ type: "status" }).catch(() => null))?.share ? "shared" : "off");
     }
   },
   async pause() {
     const r = await off({ type: "pause" });
     badge("II", "#f59e0b");
+    setIndicator("paused");
     return r;
   },
   async resume() {
     const r = await off({ type: "resume" });
     badge("REC", "#ef4444");
+    setIndicator("rec");
     return r;
   },
   status: () => off({ type: "status" }),
@@ -175,18 +271,54 @@ const api = {
   setMic: (on) => off({ type: "mic", on }),
 
   // --- annotation (drives the page in front)
-  freeze: () => toTab({ type: "freeze" }),
-  /** Freeze the page if it is not frozen, and choose the tool, colour and size: one message instead of three. */
-  draw: (tool, extra = {}) => toTab({ type: "draw", tool, ...extra }),
+  freeze: () => api.draw(undefined),
+  /**
+   * Freeze the page if it is not frozen, and choose the tool, colour and size: one message instead of three.
+   * On a browser page (which cannot run our code) a board with a picture of the page opens first.
+   */
+  async draw(tool, extra = {}) {
+    const tab = await activeTab();
+    if (isRestricted(tab.url)) await openBoard(tab);
+    try {
+      return await toTab({ type: "draw", tool, ...extra });
+    } catch (e) {
+      if (!/Receiving end does not exist/i.test(String(e.message ?? e)) || isBoard(tab.url)) throw e;
+      await openBoard(tab); // the page refused our script (a policy, a local file...): draw on a picture of it
+      return toTab({ type: "draw", tool, ...extra });
+    }
+  },
   /** Everything the panel shows, in one answer. */
   async panelState() {
-    const [status, page] = await Promise.all([off({ type: "status" }).catch((e) => ({ error: String(e.message ?? e) })), api.pageState().catch((e) => ({ error: String(e.message ?? e) }))]);
+    const tab = await activeTab().catch(() => null);
+    const restricted = !!tab && isRestricted(tab.url) && !isBoard(tab.url);
+    const [status, page] = await Promise.all([
+      off({ type: "status" }).catch((e) => ({ error: String(e.message ?? e) })),
+      restricted ? { restricted: true } : api.pageState().catch((e) => ({ error: String(e.message ?? e) })),
+    ]);
     return { status, page };
   },
   tool: (tool, extra = {}) => toTab({ type: "tool", tool, ...extra }),
   undo: () => toTab({ type: "undo" }),
   redo: () => toTab({ type: "redo" }),
-  clear: () => toTab({ type: "clear" }),
+  async clear() {
+    const tab = await activeTab().catch(() => null);
+    const r = await toTab({ type: "clear" }).catch(() => ({ ok: true }));
+    if (tab && isBoard(tab.url)) {
+      await sleep(170); // after the drawing's fade-out
+      await closeBoard(tab); // and back to the real page
+    }
+    return r;
+  },
+
+  async getPrefs() {
+    return prefs();
+  },
+  async setPrefs(p) {
+    await chrome.storage.local.set({ ...(p.indicator !== undefined && { indicator: !!p.indicator }), ...(p.announce !== undefined && { announce: !!p.announce }) });
+    const { indicatorWanted } = await chrome.storage.session.get("indicatorWanted");
+    await setIndicator(indicatorWanted ?? "off");
+    return { ok: true };
+  },
   pageState: () => toTab({ type: "state" }),
 
   async list() {
@@ -247,7 +379,22 @@ chrome.runtime.onMessage.addListener((m, sender, reply) => {
     api[m.fn](...(m.args ?? [])).then(reply, (e) => reply({ error: String(e.message ?? e) }));
     return true;
   }
+  if (m?.type === "getIndicator") {
+    chrome.storage.session.get("indicatorMode").then((s) => reply({ mode: s.indicatorMode ?? "off" }));
+    return true;
+  }
+  if (m?.type === "cleared") {
+    // everything was cleared on a drawing board (the Esc key, for example): back to the real page
+    if (sender.tab && isBoard(sender.tab.url)) setTimeout(() => closeBoard(sender.tab), 170);
+    reply?.({});
+    return;
+  }
+  if (m?.type === "share-ended") {
+    setIndicator("off");
+    return;
+  }
   if (m?.type === "auto-stopped") {
+    setIndicator("off");
     badge("!", "#ef4444");
     setTimeout(() => badge(""), 5000);
     chrome.storage.local.set({ lastEnded: { at: Date.now(), reason: m.reason, name: m.saved?.name ?? null, error: m.error ?? null } }).catch(() => {});
@@ -312,12 +459,9 @@ async function onCommand(command, tab) {
     } else if (command === "toggle-pause") {
       if (s.recording) await (s.paused ? api.resume() : api.pause());
     } else if (command === "toggle-draw") {
-      const p = await api.pageState();
+      const p = await api.pageState().catch(() => null); // null on a browser page: the draw call opens a board for it
       if (p?.frozen) await api.clear();
-      else {
-        await api.freeze();
-        await api.tool(p?.tool ?? "pen");
-      }
+      else await api.draw(p?.tool ?? "pen");
     }
   } catch (e) {
     self.lastCommandError = String(e.message ?? e);

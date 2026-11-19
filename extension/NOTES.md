@@ -364,3 +364,9 @@ Least-privilege manifest (desktopCapture removed), real icons and version 3.0.0,
 
 ### Round 8: buttery UI
 Panel redesigned on shared tokens (`ui.css`) with light/dark, an icon sprite, folding setup card, cross-fading record controls, optimistic states, animated alerts and toasts, list items that pop in, a size/colour preview, staggered entrance, `details` that open smoothly, reduced-motion support. Permission page redesigned (pulsing ring while asking, check on success, alert when blocked). In the page: tool-aware cursors, hover cursor for select, fade-out on clear. All 14 suites pass in Edge, Chrome and Brave.
+
+### Round 9: browser pages, shared screens
+- Browser pages cannot run content scripts, so a "board" tab (`board.html`) shows a picture of the page cut from the window capture (size taken from the last ordinary page of the window, because the tab size the browser reports is a few percent off) and `content.js` runs on it unchanged; `cleared` messages close it. Esc works because the content script tells the service worker.
+- Entire-screen shares already worked through the self-calibrating crop. Added: what is shared is reported (`displaySurface`), shown in the panel, and a clear message when the page is not on the shared screen.
+- Light frame: 2 px inset line in the page's top-layer host, steady colour only. An animation made the page change every frame and defeated the recorder's skipping of identical pictures (still-page CPU went from 1.4% to 9%); removed, and the recorder crops 4 CSS px inside the edges so the frame is never recorded.
+- The brief notice is a small popup window near the top right of the browser window (a native border around a whole screen is outside what an extension can do), only when a person pressed Share.

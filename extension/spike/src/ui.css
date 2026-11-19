@@ -110,6 +110,7 @@ button, input { font: inherit; color: inherit; }
 .alert.bad { background: var(--bad-soft); color: var(--bad); }
 .alert.warn { background: var(--warn-soft); color: var(--warn); }
 .alert.ok { background: var(--ok-soft); color: var(--ok); }
+.alert.info { background: var(--accent-soft); color: var(--accent); }
 .alert .alert-body { display: grid; gap: 8px; min-width: 0; flex: 1; color: var(--text); }
 .alert .alert-body b { color: inherit; }
 .pop { animation: pop var(--base) var(--ease) both; }

@@ -66,9 +66,9 @@ try {
   // ---- drawing: one press lights the tool and freezes the page
   await sleep(500);
   const t1 = Date.now();
-  await panel.evaluate(() => document.querySelector('[data-tool="rect"]').click());
-  const lit = await panel.waitForFunction(() => document.querySelector('[data-tool="rect"]').classList.contains("on"), null, { timeout: 2000, polling: 10 }).then(() => Date.now() - t1, () => -1);
-  check(lit >= 0 && lit < 120, "choosing a tool lights it at once", `${lit} ms`);
+  // pressed and checked in the same moment: the tool must be lit before the click handler even returns
+  const litNow = await panel.evaluate(() => { const b = document.querySelector('[data-tool="rect"]'); b.click(); return b.classList.contains("on"); });
+  check(litNow === true, "choosing a tool lights it at once (before anything else has answered)");
   let frozenAt = -1;
   for (let i = 0; i < 100 && frozenAt < 0; i++) { if ((await api("pageState")).frozen) frozenAt = Date.now() - t1; else await sleep(10); }
   check(frozenAt >= 0 && frozenAt < 700, "and the page is frozen for drawing within 0.7 s", `${frozenAt} ms`);

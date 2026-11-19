@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>AnnotRec drawing board</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
+  #shot { display: block; width: 100vw; height: 100vh; object-fit: fill; user-select: none; -webkit-user-drag: none; }
+</style>
+</head>
+<body>
+<!-- A browser page (new tab, settings, the extension store...) cannot run AnnotRec's drawing code. So drawing happens
+     here: this tab shows a picture of that page, and the normal drawing code (content.js) runs on top of it. -->
+<img id="shot" alt="" />
+<script src="board.js"></script>
+<script src="content.js"></script>
+</body>
+</html>

@@ -21,7 +21,7 @@
   report();
 
   // ------------------------------------------------------------------ UI
-  let host, root, bg, cv, ctx, mk;
+  let host, root, bg, cv, ctx, mk, ind;
   let frozen = false;
   let tool = "pen";
   let color = "#a855f7";
@@ -44,10 +44,15 @@
       .ed{position:fixed;min-width:40px;min-height:1.25em;outline:2px dashed rgba(91,140,255,.9);outline-offset:3px;white-space:pre;pointer-events:auto;background:rgba(255,255,255,.04)}
       canvas{pointer-events:none;touch-action:none}
       #mk{border:8px solid rgb(255,0,255);box-sizing:border-box;pointer-events:none}
-    </style><img id="bg" alt=""><canvas id="cv"></canvas><div id="mk"></div>`;
+      /* a light line at the very edge of the page while sharing or recording; the recorder cuts it off (see offscreen.js) */
+      /* steady, never animated: an animation would make the page change on every frame and the recorder could not skip still pictures */
+      #ind{position:fixed;inset:0;pointer-events:none;opacity:0;box-shadow:inset 0 0 0 2px var(--c,transparent)}
+      #ind.on{opacity:1}
+    </style><img id="bg" alt=""><canvas id="cv"></canvas><div id="mk"></div><div id="ind"></div>`;
     bg = root.getElementById("bg");
     cv = root.getElementById("cv");
     mk = root.getElementById("mk");
+    ind = root.getElementById("ind");
     ctx = cv.getContext("2d");
     (document.body ?? document.documentElement).appendChild(host);
     try {
@@ -461,6 +466,7 @@
     redoStack = [];
     draft = null;
     cv.style.pointerEvents = "none";
+    send({ type: "cleared" });
     // the drawing fades out (0.15 s) instead of vanishing; the layers are taken away once it has
     bg.style.opacity = cv.style.opacity = "0";
     clearTimeout(hideTimer);
@@ -472,6 +478,19 @@
     }, 170);
   }
 
+  // ------------------------------------------------------------- the light frame
+  const FRAME = { shared: "rgba(91,140,255,.6)", rec: "rgba(255,90,100,.7)", paused: "rgba(245,192,78,.75)" };
+  function setIndicator(mode) {
+    if (mode === "off" || !FRAME[mode]) {
+      if (ind) ind.className = "";
+      return;
+    }
+    ensureUi();
+    ind.style.setProperty("--c", FRAME[mode]);
+    ind.className = `on${mode === "rec" ? " rec" : ""}`; // (the "rec" class only tells the colour apart in tests; there is no animation)
+  }
+  chrome.runtime.sendMessage({ type: "getIndicator" }).then((r) => r?.mode && r.mode !== "off" && setIndicator(r.mode)).catch(() => {});
+
   let hideTimer = 0;
   /** The pointer says what the tool will do: crosshair to draw, I-beam for text, a cross to erase, an arrow to select. */
   function setCursor() {
@@ -482,6 +501,10 @@
   chrome.runtime.onMessage.addListener((m, _sender, reply) => {
     if (m?.target === "offscreen") return; // not for us
     switch (m?.type) {
+      case "indicator":
+        setIndicator(m.mode);
+        reply({ ok: true });
+        return;
       case "report":
         report();
         reply({ ok: true });
@@ -529,7 +552,7 @@
         reply({ ok: true });
         return;
       case "state":
-        reply({ frozen, shapes: shapes.length, tool, color, width, canRedo: redoStack.length > 0, selected: !!selected, firstShape: shapes[0] ? JSON.parse(JSON.stringify(shapes[0])) : null });
+        reply({ frozen, indicator: ind?.className ?? "", shapes: shapes.length, tool, color, width, canRedo: redoStack.length > 0, selected: !!selected, firstShape: shapes[0] ? JSON.parse(JSON.stringify(shapes[0])) : null });
         return;
     }
   });

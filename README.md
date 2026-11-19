@@ -23,6 +23,8 @@ freeze the page and draw on it while you talk, press **Clear all** to go live ag
 - **Drawing**: Shadow DOM in the browser's top layer; the page is frozen with `captureVisibleTab`.
 - **Browsers**: Edge, Chrome and Brave all pass the full test suite (`BROWSER=edge|chrome|brave npm run ext:test`). One difference: the developer self-reload after a rebuild is on by default in Edge only; in Chrome and Brave it is a setting in the panel (off by default).
 
+**Browser pages and shared screens**: new-tab, settings and store pages can be drawn on through a picture board (Clear all returns to the page); an entire screen or a second screen can be shared (the browser must be on it) and the panel names what is shared; a short notice and a thin, never-recorded frame at the page edge (blue sharing, red recording) show what is shared, both optional.
+
 **Speed**: Start is recording about 0.1-0.2 s after the click (and the button says "Starting…" within 0.03 s); Stop shows "Saving…" at once and "Saved ✓" about 0.2 s later; tools light up instantly; 30 fps; a moving page about 8-10% of a 12-core laptop, a still page (most of a demo) about 1.5%. Measured with the browser's fake microphone; a real device can add its own opening time.
 
 **Tests**: Playwright driving real Edge (`extension/spike/test`).
@@ -56,7 +58,7 @@ The panel follows the browser's light or dark theme. **Get ready** folds away on
 
 **Tools**: Select (V), Pen (B), Highlighter (H), Line (L), Arrow (A), Box (R), Circle (O), Text (T), Numbered marker (M), Eraser (E); 8 colours, size slider; Ctrl+Z / Ctrl+Shift+Z; Delete removes the selected shape; Esc clears and goes live; Shift snaps lines to 45 degrees.
 
-**Tests**: `npm run ext:test` runs 14 suites (about 150 checks, each in its own Edge and server): static quality gate, drawing tools, latency, panel and permissions, failure handling, end-to-end recording with pixel and sound checks, zoom/resize, pause, performance, demo run, auto-reload.
+**Tests**: `npm run ext:test` runs 17 suites (about 180 checks, each in its own Edge and server): static quality gate, drawing tools, latency, panel and permissions, failure handling, end-to-end recording with pixel and sound checks, zoom/resize, pause, performance, demo run, auto-reload.
 
 **After you change the code**: `npm run ext:build`. A loaded extension reloads itself (not during a recording); you do not need to touch `edge://extensions`. Only the window share has to be picked again.
 

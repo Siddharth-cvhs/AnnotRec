@@ -134,7 +134,10 @@ async function renderPerm(status) {
   $("micline").textContent = micOk ? "Allowed ✓" : m === "denied" ? "Blocked by the browser. Press Fix." : "Not allowed yet";
   $("mic").textContent = m === "denied" ? "Fix" : "Allow";
   $("step-win").className = `step ${shared ? "done" : ""}`;
-  $("winline").textContent = shared ? "Shared ✓ The picture follows your tabs" : "Pick it once; the picture then follows your tabs";
+  const KIND = { monitor: "Entire screen", window: "Browser window", browser: "Browser tab" };
+  $("winline").textContent = shared
+    ? `Shared ✓ ${KIND[s.share?.surface] ?? "Browser window"}${s.share?.width ? ` · ${s.share.width}×${s.share.height}` : ""}${s.share?.surface === "monitor" ? " (the browser must be on it)" : ""}`
+    : "Pick the browser window (or a screen with the browser on it)";
   const missing = (micOk ? 0 : 1) + (shared ? 0 : 1);
   setupReady = missing === 0;
   $("setupbadge").textContent = setupReady ? "Ready ✓" : `${missing} step${missing > 1 ? "s" : ""} left`;
@@ -162,7 +165,7 @@ async function requestMic() {
 /** Share the window with the browser's picker; explains what happened if it was cancelled. */
 async function ensureShared(status) {
   if (status?.sharing) return true;
-  const r = await call("pick");
+  const r = await call("pick", { announce: true });
   if (r?.error) {
     setErr(
       /denied|dismiss|NotAllowed|cancel/i.test(r.error)
@@ -324,14 +327,22 @@ async function refresh() {
   $("status").textContent = !s || s.error
     ? s?.error ?? "…"
     : `sharing: ${s.sharing}   calibrated: ${s.calibrated}\nrecording: ${s.paused ? "paused" : s.recording}   ${(s.elapsedMs / 1000).toFixed(1)} s`;
-  reveal($("pagehint"), !!p?.error);
-  if (p?.error) $("pagehint").textContent = "Drawing is not available on this page (browser pages cannot be drawn on). Switch to a normal website.";
-  if (p && !p.error) {
+  reveal($("pagehint"), !!p?.error || !!p?.restricted);
+  $("pagehint").className = `alert ${p?.error ? "warn" : "info"}`;
+  if (p?.restricted) {
+    $("pagehint").textContent = s?.sharing
+      ? "This is a browser page. Press a tool and AnnotRec draws on a picture of it; Clear all returns to the page."
+      : "This is a browser page. Share the window first (Get ready), then press a tool to draw on a picture of it.";
+  } else if (p?.error) {
+    $("pagehint").textContent = "Drawing could not start on this page. Switch to another tab and try again.";
+  }
+  if (p && !p.error && !p.restricted) {
     tool = p.tool ?? tool;
     markSelected(p.frozen);
     $("undo").disabled = !p.frozen || !p.shapes;
     $("redo").disabled = !p.frozen || !p.canRedo;
   } else {
+    markSelected(false);
     $("undo").disabled = $("redo").disabled = true;
   }
   if (slowTick++ % 4) return pace(!!s?.recording);
@@ -425,3 +436,12 @@ chrome.runtime.onMessage.addListener((m) => {
   $("autoreload").checked = !!r.on;
 })();
 $("autoreload").onchange = () => call("setAutoReload", $("autoreload").checked);
+
+// ------------------------------------------------------------------ settings: the light frame and the notice
+(async () => {
+  const p = await call("getPrefs");
+  $("pref-indicator").checked = !!p?.indicator;
+  $("pref-announce").checked = !!p?.announce;
+})();
+$("pref-indicator").onchange = () => call("setPrefs", { indicator: $("pref-indicator").checked });
+$("pref-announce").onchange = () => call("setPrefs", { announce: $("pref-announce").checked });

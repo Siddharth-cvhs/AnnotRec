@@ -32,11 +32,16 @@ const S = {
   prep: null, // the microphone and the server session, prepared while the page is being measured
   calKey: null,
   scan: null,
+  shareInfo: null, // { surface: monitor | window | browser, width, height } of what is shared
 };
 
 /** Size of a window frame (VideoFrame, or an ImageBitmap in older paths). */
 const fw = (f) => f.displayWidth ?? f.width;
 const fh = (f) => f.displayHeight ?? f.height;
+// The page is recorded a few pixels inside its edges: the light frame the page draws there while sharing or recording
+// (see content.js) is therefore never in the video.
+const INSET_CSS = 4;
+
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const even = (n) => Math.max(2, Math.round(n / 2) * 2);
 
@@ -51,8 +56,12 @@ async function useStream(stream) {
   S.track?.stop();
   const [track] = stream.getVideoTracks();
   S.track = track;
+  const st = track.getSettings();
+  S.shareInfo = { surface: st.displaySurface ?? "window", width: st.width ?? 0, height: st.height ?? 0 }; // monitor | window | browser
   track.addEventListener("ended", async () => {
     S.track = null;
+    S.shareInfo = null;
+    chrome.runtime.sendMessage({ type: "share-ended" }).catch(() => {});
     if (!S.recorder) return;
     // Do not lose the recording: finish and save it, and tell the user why it stopped.
     try {
@@ -74,7 +83,7 @@ async function useStream(stream) {
     }
   })();
   for (let i = 0; i < 40 && !S.latest; i++) await sleep(50);
-  return { ok: true, settings: track.getSettings(), label: track.label };
+  return { ok: true, settings: track.getSettings(), label: track.label, surface: S.shareInfo.surface };
 }
 
 // ------------------------------------------------------------------ calibration
@@ -150,7 +159,13 @@ async function calibrate(geometry) {
     m = findMarkerFast() ?? (i >= 40 && i % 10 === 0 ? findMarker() : null);
     if (!m) await sleep(25);
   }
-  if (!m) throw new Error("Could not find the page inside the window picture (marker not seen).");
+  if (!m) {
+    throw new Error(
+      S.shareInfo?.surface === "monitor"
+        ? "AnnotRec cannot see this browser page on the screen you shared. Put the browser window on that screen, or press Share and choose the browser window instead."
+        : "AnnotRec cannot find this page inside what you shared. Press Share and choose this browser window.",
+    );
+  }
   S.cal = {
     left: m.x0,
     bottomGap: m.frame.h - (m.y0 + m.h),
@@ -171,13 +186,35 @@ function calValid(geometry) {
   return !!(S.cal && k && f && k.fw === fw(f) && k.fh === fh(f) && k.dw === Math.round(geometry.innerW * geometry.dpr) && k.dh === Math.round(geometry.innerH * geometry.dpr));
 }
 
+/** The page in front as a picture, cut out of the newest window frame (for a page that cannot run our code). */
+async function pagePicture({ w, h }) {
+  const f = S.latest;
+  if (!f) throw new Error("The window is not being shared.");
+  if (!S.cal) throw new Error("The page position is not measured yet.");
+  // The size of the page area comes from the last ordinary page in this window (a browser page cannot tell its own
+  // size, and the number the browser reports for a tab is not exactly the page area); `w`, `h` are only the fallback.
+  const zoom = S.geo ? S.geo.dpr / S.cal.dpr : 1;
+  const sw = Math.round((S.geo?.innerW ?? w) * S.cal.scaleX * zoom), sh = Math.round((S.geo?.innerH ?? h) * S.cal.scaleY * zoom);
+  const sx = S.cal.left, sy = fh(f) - S.cal.bottomGap - sh;
+  const c = new OffscreenCanvas(sw, sh);
+  c.getContext("2d").drawImage(f, sx, sy, sw, sh, 0, 0, sw, sh);
+  const blob = await c.convertToBlob({ type: "image/jpeg", quality: 0.95 });
+  const url = await new Promise((resolve) => {
+    const fr = new FileReader();
+    fr.onload = () => resolve(fr.result);
+    fr.readAsDataURL(blob);
+  });
+  return { ok: true, url, w: sw, h: sh };
+}
+
 /** The part of the newest window frame that is the page, for the tab in front right now. */
 function pageRect(frame) {
   const { cal, geo } = S;
   const zoom = geo.dpr / cal.dpr; // zoom differs between sites; the page's own dpr tells us
   const sw = Math.round(geo.innerW * cal.scaleX * zoom);
   const sh = Math.round(geo.innerH * cal.scaleY * zoom);
-  return { sx: cal.left, sy: fh(frame) - cal.bottomGap - sh, sw, sh };
+  const ix = Math.round(INSET_CSS * cal.scaleX * zoom), iy = Math.round(INSET_CSS * cal.scaleY * zoom);
+  return { sx: cal.left + ix, sy: fh(frame) - cal.bottomGap - sh + iy, sw: sw - 2 * ix, sh: sh - 2 * iy };
 }
 
 // -------------------------------------------------------------------- recording
@@ -339,7 +376,7 @@ async function startUnsafe(options = {}) {
   if (!S.cal || !S.geo) throw new Error("Not calibrated yet.");
 
   const T0 = performance.now();
-  S.out = { w: even(S.geo.innerW * S.cal.scaleX), h: even(S.geo.innerH * S.cal.scaleY) };
+  S.out = { w: even((S.geo.innerW - 2 * INSET_CSS) * S.cal.scaleX), h: even((S.geo.innerH - 2 * INSET_CSS) * S.cal.scaleY) };
   S.canvas = document.createElement("canvas");
   S.canvas.width = S.out.w;
   S.canvas.height = S.out.h;
@@ -489,6 +526,8 @@ chrome.runtime.onMessage.addListener((m, _sender, reply) => {
         return attachDisplay();
       case "calibrate":
         return calibrate(m.geometry);
+      case "pagePicture":
+        return pagePicture(m);
       case "prepare":
         beginPrepare(m);
         return { ok: true };
@@ -524,6 +563,7 @@ chrome.runtime.onMessage.addListener((m, _sender, reply) => {
           recording: !!S.recorder,
           busy: S.busy > 0 || !!S.recorder,
           paused: !!S.pausedAt,
+          share: S.shareInfo ?? null,
           micLevel: S.recorder && S.micTrack?.enabled ? Number((S.micLevel || 0).toFixed(3)) : 0,
           micOn: S.micTrack ? S.micTrack.enabled : null,
           elapsedMs: elapsed(),
