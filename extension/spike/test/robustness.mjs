@@ -85,7 +85,7 @@ try {
   await sw.evaluate(async () => { const w = await chrome.windows.getLastFocused(); await chrome.windows.update(w.id, { width: 1000, height: 650 }); });
   await sleep(2500); marks.smaller = at();
   await sw.evaluate(async () => { const w = await chrome.windows.getLastFocused(); await chrome.windows.update(w.id, { width: 1300, height: 850 }); });
-  await sleep(2500); marks.restored = at();
+  await sleep(3800); marks.restored = at(); // the browser settles a restored window slowly (Chrome the slowest)
 
   const saved = await api("stop");
   const file = path.join(recDir, saved.saved.name);

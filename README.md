@@ -23,7 +23,7 @@ freeze the page and draw on it while you talk, press **Clear all** to go live ag
 - **Drawing**: Shadow DOM in the browser's top layer; the page is frozen with `captureVisibleTab`.
 - **Browsers**: Edge, Chrome and Brave all pass the full test suite (`BROWSER=edge|chrome|brave npm run ext:test`). One difference: the developer self-reload after a rebuild is on by default in Edge only; in Chrome and Brave it is a setting in the panel (off by default).
 
-**Speed**: 30 fps; on a moving page about 8-10% of a 12-core laptop, on a still page (most of a demo) about 1.5%; Stop under a second; freezing a page about 10-100 ms (about 0.3 s in Chrome).
+**Speed**: Start is recording about 0.1-0.2 s after the click (and the button says "Starting…" within 0.03 s); Stop shows "Saving…" at once and "Saved ✓" about 0.2 s later; tools light up instantly; 30 fps; a moving page about 8-10% of a 12-core laptop, a still page (most of a demo) about 1.5%. Measured with the browser's fake microphone; a real device can add its own opening time.
 
 **Tests**: Playwright driving real Edge (`extension/spike/test`).
 
@@ -52,13 +52,13 @@ freeze the page and draw on it while you talk, press **Clear all** to go live ag
 
 **Tools**: Select (V), Pen (B), Highlighter (H), Line (L), Arrow (A), Box (R), Circle (O), Text (T), Numbered marker (M), Eraser (E); 8 colours, size slider; Ctrl+Z / Ctrl+Shift+Z; Delete removes the selected shape; Esc clears and goes live; Shift snaps lines to 45 degrees.
 
-**Tests**: `npm run ext:test` runs 12 suites (about 125 checks, each in its own Edge and server): static quality gate, drawing tools, latency, panel and permissions, failure handling, end-to-end recording with pixel and sound checks, zoom/resize, pause, performance, demo run, auto-reload.
+**Tests**: `npm run ext:test` runs 14 suites (about 150 checks, each in its own Edge and server): static quality gate, drawing tools, latency, panel and permissions, failure handling, end-to-end recording with pixel and sound checks, zoom/resize, pause, performance, demo run, auto-reload.
 
 **After you change the code**: `npm run ext:build`. A loaded extension reloads itself (not during a recording); you do not need to touch `edge://extensions`. Only the window share has to be picked again.
 
 **Demo mode**: Alt+Shift+R start/stop, Alt+Shift+P pause/resume, Alt+Shift+D draw/go live, from any page. The toolbar icon shows REC / II, and the panel shows a clock and a microphone level meter.
 
-**Permissions**: the first time, **Allow microphone** opens a tab where the browser asks; if it is refused you see `Microphone: Permission denied` with buttons for Edge's and Windows' microphone settings. Start opens the window picker by itself when needed.
+**Permissions**: **Allow microphone** makes the browser ask (a small tab where the browser shows its prompt); if the microphone is blocked, the button opens this extension's own microphone setting by itself, so one change fixes it. `Microphone: Permission denied` also comes with buttons for the browser's and Windows' microphone settings. Start opens the window picker by itself when needed.
 
 **Where the videos are saved**: in the server's `recordings` folder (`react-and-node/recordings`, or the folder in the `REC_DIR` environment variable). The side panel shows the path, with **Open folder**, **Copy path** and **Show** per file.
 

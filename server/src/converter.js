@@ -26,10 +26,18 @@ export class FFmpegConverter {
   }
 
   available() {
+    // Asking costs a process start (about 0.2 s on Windows), and FFmpeg does not appear or vanish while the server
+    // runs: remember a "yes" for a minute (and a "no" for a few seconds, so installing it takes effect quickly).
+    const now = Date.now();
+    if (this.availableCache && now - this.availableCache.at < (this.availableCache.ok ? 60_000 : 3_000)) return Promise.resolve(this.availableCache.ok);
     return new Promise((resolve) => {
+      const done = (ok) => {
+        this.availableCache = { ok, at: Date.now() };
+        resolve(ok);
+      };
       const p = spawn(this.ffmpegPath, ["-version"], { stdio: "ignore" });
-      p.on("error", () => resolve(false));
-      p.on("exit", (code) => resolve(code === 0));
+      p.on("error", () => done(false));
+      p.on("exit", (code) => done(code === 0));
     });
   }
 

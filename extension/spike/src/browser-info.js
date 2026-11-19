@@ -9,6 +9,8 @@
   self.annotBrowser = {
     name,
     scheme,
+    // the page where this extension's own permissions (the microphone) can be switched back on
+    siteSettings: `${scheme}://settings/content/siteDetails?site=${encodeURIComponent(`chrome-extension://${chrome.runtime.id}`)}`,
     microphoneSettings: `${scheme}://settings/content/microphone`,
     shortcutsPage: `${scheme}://extensions/shortcuts`,
     extensionsPage: `${scheme}://extensions`,

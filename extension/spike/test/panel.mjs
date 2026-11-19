@@ -67,6 +67,33 @@ try {
   check((await denied.isVisible("#browsersettings")) && (await denied.isVisible("#win")) && (await denied.isVisible("#steps")), "and shows the browser settings, the Windows settings and the steps");
   const href = await denied.getAttribute("#win", "href");
   check(href === "ms-settings:privacy-microphone", "the Windows button points at Windows' microphone privacy page", href);
+  // The "Allow microphone" button itself: when the browser can still ask, it makes the browser ask (a permission tab opens)...
+  await sw.evaluate(() => chrome.storage.local.remove("micGranted"));
+  const askPage = await ctx.newPage();
+  await askPage.goto(`chrome-extension://${EXT_ID}/sidepanel.html`);
+  await askPage.waitForFunction(() => document.getElementById("perm").textContent.includes("Microphone: not asked yet"), null, { timeout: 8000 });
+  const askTab = ctx.waitForEvent("page", { timeout: 6000 });
+  await askPage.click("#mic");
+  check((await askTab).url().endsWith("/permission.html"), "\"Allow microphone\" makes the browser show its permission prompt (not asked yet)");
+
+  // ...and when the browser has BLOCKED it (it cannot ask any more), the page where the block is lifted opens by itself
+  const blockedPanel = await ctx.newPage();
+  await blockedPanel.addInitScript(() => {
+    const real = navigator.permissions.query.bind(navigator.permissions);
+    navigator.permissions.query = (d) => (d?.name === "microphone" ? Promise.resolve({ state: "denied", addEventListener() {}, set onchange(_) {} }) : real(d));
+  });
+  await blockedPanel.goto(`chrome-extension://${EXT_ID}/sidepanel.html`);
+  await blockedPanel.waitForFunction(() => document.getElementById("perm").textContent.includes("Microphone: blocked"), null, { timeout: 8000 });
+  check(true, "a blocked microphone is shown as blocked");
+  await blockedPanel.click("#mic");
+  // (the browser's own settings pages are not reported as pages to the test tool, so ask the browser for its tabs)
+  let settingsUrl = "";
+  for (let i = 0; i < 40 && !settingsUrl; i++) {
+    settingsUrl = (await sw.evaluate(() => chrome.tabs.query({}).then((ts) => ts.map((t) => t.url || t.pendingUrl || "").find((u) => /siteDetails/.test(u)) ?? ""))) || "";
+    if (!settingsUrl) await sleep(100);
+  }
+  check(/:\/\/settings\/content\/siteDetails\?site=chrome-extension/.test(decodeURIComponent(settingsUrl)), "\"Allow microphone\" on a blocked microphone opens this extension's microphone setting by itself", decodeURIComponent(settingsUrl).slice(0, 100));
+  check(await blockedPanel.isVisible("#help") && /Permission denied/.test(await blockedPanel.textContent("#helptext")), "and the panel says why, in plain words");
   check(errors.length === 0, "no script errors in the panel", errors.join(" | "));
 } catch (e) {
   console.log("  FAIL  crashed:", e.message.split("\n")[0]);

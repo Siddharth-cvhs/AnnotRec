@@ -29,6 +29,8 @@
   .recbar .dot { width: 10px; height: 10px; border-radius: 50%; background: #5b6372; }
   .recbar.rec .dot { background: #ef4444; animation: pulse 1.2s ease-in-out infinite; }
   .recbar.paused .dot { background: #f59e0b; }
+  .recbar.starting .dot, .recbar.saving .dot { background: #facc15; animation: pulse .6s ease-in-out infinite; }
+  button:active:not(:disabled) { transform: translateY(1px); }
   .recbar #recstate { font-weight: 600; }
   .recbar #clock { font: 600 18px ui-monospace, Consolas, monospace; margin-left: auto; }
   .meter { width: 54px; height: 8px; background: #2a303b; border-radius: 99px; overflow: hidden; }

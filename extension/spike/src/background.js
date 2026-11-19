@@ -47,6 +47,18 @@ function badge(text, color) {
   if (color) chrome.action.setBadgeBackgroundColor({ color }).catch(() => {});
 }
 
+let calibrating = null;
+let preflightOk = null; // { server, at, result } of the last successful check
+/** Measure the page unless the earlier measurement is still right for it (then nothing flashes and nothing waits). */
+function ensureCalibrated() {
+  calibrating ??= (async () => {
+    const geometry = await toTab({ type: "marker", on: false }); // the page's current size (cheap)
+    if ((await off({ type: "calValid", geometry })).valid) return { cached: true };
+    return api.calibrate();
+  })().finally(() => (calibrating = null));
+  return calibrating;
+}
+
 const api = {
   /** Where the AnnotRec server (our FFmpeg pipeline) is. */
   async setServer(url) {
@@ -80,7 +92,13 @@ const api = {
   /** Share the browser window, once. The picture follows whichever tab is in front. */
   async pick() {
     await ensureOffscreen();
-    return off({ type: "attachDisplay" });
+    const shared = await off({ type: "attachDisplay" });
+    // Now that the window is shared, do the slow one-time things so that Start is quick: measure where the page sits
+    // in the window picture, and warm up the audio system.
+    ensureCalibrated().catch(() => {});
+    off({ type: "prewarm" }).catch(() => {});
+    api.preflight().catch(() => {});
+    return shared;
   },
 
   /**
@@ -97,9 +115,10 @@ const api = {
     }
   },
 
-  /** Is the AnnotRec server there, and can it make MP4s? Asked before anything is captured. */
+  /** Is the AnnotRec server there, and can it make MP4s? Asked before anything is captured (and remembered briefly). */
   async preflight() {
     const server = await serverUrl();
+    if (preflightOk && preflightOk.server === server && Date.now() - preflightOk.at < 30_000) return preflightOk.result;
     let h;
     try {
       h = await (await fetch(`${server}/api/health`, { signal: AbortSignal.timeout(2500) })).json();
@@ -107,17 +126,30 @@ const api = {
       throw new Error(`Cannot reach the AnnotRec server at ${server}. Start it (npm start) and try again.`);
     }
     if (!h.ffmpeg) throw new Error("The AnnotRec server cannot find FFmpeg, so it cannot make the MP4. Install FFmpeg and restart the server.");
-    return { ok: true, folder: h.folder };
+    preflightOk = { server, at: Date.now(), result: { ok: true, folder: h.folder } };
+    return preflightOk.result;
   },
 
   async start(options = {}) {
-    const [, cal] = await Promise.all([api.preflight(), api.calibrate()]);
-    await off({ type: "geometry", ...(await toTab({ type: "marker", on: false })) });
+    const t0 = performance.now();
     // The recorder page has no storage access (offscreen pages only get the messaging API): pass the server address in.
     const { server } = await chrome.storage.local.get("server");
-    const started = await off({ type: "start", server, ...options });
-    badge("REC", "#ef4444");
-    return { ...started, calibration: cal };
+    // 1. The slow things begin right now and run side by side: the microphone and the server session...
+    await off({ type: "prepare", server, ...options });
+    try {
+      // 2. ...while the server is checked and the page is measured (if it was not measured already).
+      const [, cal] = await Promise.all([api.preflight(), ensureCalibrated()]);
+      const t1 = performance.now();
+      await off({ type: "geometry", ...(await toTab({ type: "marker", on: false })) });
+      const t2 = performance.now();
+      const started = await off({ type: "start", server, ...options });
+      badge("REC", "#ef4444");
+      const t3 = performance.now();
+      return { ...started, calibration: cal, timings: { checkAndMeasureMs: Math.round(t1 - t0), geometryMs: Math.round(t2 - t1), recorderMs: Math.round(t3 - t2), totalMs: Math.round(t3 - t0), inside: started.timings } };
+    } catch (e) {
+      await off({ type: "cancelPrepare" }).catch(() => {});
+      throw e;
+    }
   },
 
   async stop() {
@@ -144,6 +176,13 @@ const api = {
 
   // --- annotation (drives the page in front)
   freeze: () => toTab({ type: "freeze" }),
+  /** Freeze the page if it is not frozen, and choose the tool, colour and size: one message instead of three. */
+  draw: (tool, extra = {}) => toTab({ type: "draw", tool, ...extra }),
+  /** Everything the panel shows, in one answer. */
+  async panelState() {
+    const [status, page] = await Promise.all([off({ type: "status" }).catch((e) => ({ error: String(e.message ?? e) })), api.pageState().catch((e) => ({ error: String(e.message ?? e) }))]);
+    return { status, page };
+  },
   tool: (tool, extra = {}) => toTab({ type: "tool", tool, ...extra }),
   undo: () => toTab({ type: "undo" }),
   redo: () => toTab({ type: "redo" }),

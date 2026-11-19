@@ -39,7 +39,8 @@ Each suite launches its own Edge and server on spare ports and cleans up after i
 Select and move (V, Delete removes), Pen (B), Highlighter (H), Line (L), Arrow (A), Box (R), Circle (O), Text (T), Numbered marker (M), Eraser (E). Shift snaps lines and arrows to 45 degrees. Ctrl+Z / Ctrl+Shift+Z undo and redo, Esc clears everything and goes live. Colours and size are in the side panel.
 
 ## Permissions
-- **Allow microphone** (or Start, when it is not allowed yet) opens a small AnnotRec tab so the browser shows its microphone prompt. Choose Allow once.
+- **Allow microphone** (or Start, when it is not allowed yet) makes the browser ask: a small AnnotRec tab opens and the browser shows its own permission prompt there. Choose Allow once.
+- If the microphone is **blocked** (the browser cannot ask any more), the same button opens this extension's own site setting (`.../settings/content/siteDetails?site=chrome-extension://...`) by itself, so you change Microphone to Allow in one step. The panel notices the change at once.
 - If it is refused, the tab says `Microphone: Permission denied` and shows the steps plus two buttons: **Edge microphone settings** (`edge://settings/content/microphone`) and **Windows microphone settings** (`ms-settings:privacy-microphone`).
 - **Start** also opens the window picker by itself when the window is not shared yet, and explains what to do if it is cancelled.
 
@@ -76,9 +77,24 @@ Edge was the first target; Chrome and Brave run the same code. The only differen
 **Self-reload is a developer convenience.** In Edge it is on by default (proven by `test/autoreload.mjs`). In Chrome and Brave it is a checkbox in the panel's Settings, off by default: the browsers' own tooling installs the extension in a way that does not come back after `chrome.runtime.reload()`, and when you install with **Load unpacked** I have not been able to confirm that in an automated test. If you want it, turn it on and see; if the extension ever vanishes, load it again and leave it off. Otherwise press the reload arrow on the extensions page after a rebuild.
 
 ## Speed
-Measured by `test/perf.mjs` on a 12-core laptop, recording a 1596x946 window:
-- Moving page: 30 fps in the MP4, about 8-10% of the machine (about 5% of that is the page itself).
-- **Still page** (most of a demo: you talk over a page): about 1.5% of the machine. The recorder skips pictures that would be identical to the last one and still draws at least two per second, so the video is never shorter than the sound.
-- Smoothness: at most five visible hitches (over 100 ms) in a whole recording, none over half a second.
-- Start asks the microphone and the server at the same time, and checks the server while it measures the page, so it starts sooner. Stop takes under a second. Freezing a page takes about 10-100 ms in Edge and Brave and about 0.3 s in Chrome (its own page-picture call is slower, and it allows only two per second, which the extension waits out). Drawing over 400 shapes keeps 60 fps.
-- The side panel polls slowly (every 1.2 s) when nothing is recording and fast (0.3 s, for the clock and meter) only while recording.
+Measured on a 12-core laptop (`test/startlatency.mjs`, `test/ui.mjs`, `test/perf.mjs`, `test/latency.mjs`), with the browser's fake microphone:
+
+| What | Before | Now |
+|---|---|---|
+| Press **Start** until it is recording | 1.25 s first time, 0.55 s later | **about 0.2 s first time, about 0.1 s later** (through the real panel: "Recording" 0.25 s after the click) |
+| **Start** button feedback | none until done | **"Starting…" within 0.03 s** |
+| Choose a drawing tool | 2 messages, slow to light | lights at once, page frozen in about 0.1 s |
+| Press **Stop** | no feedback | "Saving…" at once, "Saved ✓" about 0.2 s later |
+| Page picture to draw on | 10-300 ms | unchanged (Chrome: about 0.3 s, a browser limit) |
+| Recording a moving page | about 8-10% of the machine | same, 30 fps |
+| Recording a still page (most of a demo) | about 10% | **about 1.5%** |
+
+**What made Start fast**
+- The page is measured **once, when you share the window**, and reused (it is measured again only if the window or page size changes). So Start no longer flashes a magenta frame and no longer waits for it.
+- The microphone and the server session open **at the same moment**, while the rest is checked, instead of one after another. The audio system is warmed up once when you share the window, because its first opening is the slowest.
+- The server check is remembered for 30 s, and the server remembers that FFmpeg exists (it used to start FFmpeg on every check, about 0.2 s).
+- The marker search reads two thin strips of the picture instead of all of it.
+
+**With a real microphone** the opening of the device itself can still take a moment (a Bluetooth headset can take a second or more, and that is the headset, not the extension). The panel already shows "Starting…", and the work happens in parallel, so you only wait for the microphone itself.
+
+Other numbers: at most five visible hitches (over 100 ms) in a whole recording, Stop under a second, drawing over 400 shapes keeps 60 fps, the side panel polls slowly (1.2 s) when nothing is recording and fast (0.3 s) only while recording.

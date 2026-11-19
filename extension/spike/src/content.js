@@ -472,6 +472,19 @@
       case "freeze":
         freeze().then(reply, (e) => reply({ error: String(e.message ?? e) }));
         return true;
+      case "draw":
+        freeze().then(
+          () => {
+            if (TOOLS.includes(m.tool)) tool = m.tool;
+            if (m.color) color = m.color;
+            if (m.width) width = m.width;
+            if (tool !== "select") selected = null;
+            paint();
+            reply({ ok: true });
+          },
+          (e) => reply({ error: String(e.message ?? e) }),
+        );
+        return true;
       case "tool":
         if (TOOLS.includes(m.tool)) tool = m.tool;
         if (tool !== "select") selected = null;

@@ -22,10 +22,11 @@ function show(kind, text) {
 
 async function ask() {
   $("fix").hidden = true;
-  $("browsersettings").hidden = $("win").hidden = true;
+  $("browsersettings").hidden = $("sitesettings").hidden = $("win").hidden = true;
   try {
     (await navigator.mediaDevices.getUserMedia({ audio: true })).getTracks().forEach((t) => t.stop());
     show("ok", "Microphone allowed. You can close this tab; recording will have your voice.");
+    chrome.storage.local.set({ micGranted: true }); // remembered even if the side panel is not open right now
     chrome.runtime.sendMessage({ type: "permission", mic: "granted" }).catch(() => {});
     setTimeout(() => window.close(), 1400);
   } catch (e) {
@@ -35,11 +36,13 @@ async function ask() {
     $("steps").innerHTML = (denied ? HELP.blocked : HELP.system).map((s) => `<li>${s}</li>`).join("");
     $("fix").hidden = false;
     $("browsersettings").hidden = false;
+    $("sitesettings").hidden = !denied; // the one click that lifts the block
     $("win").hidden = !(system || denied);
   }
 }
 
 $("retry").onclick = ask;
+$("sitesettings").onclick = () => chrome.tabs.create({ url: self.annotBrowser.siteSettings });
 $("browsersettings").onclick = () => chrome.tabs.create({ url: self.annotBrowser.microphoneSettings });
 $("browsersettings").textContent = `Open ${self.annotBrowser.name} microphone settings`;
 ask();

@@ -29,6 +29,9 @@ const S = {
   micPeak: 0,
   micState: null,
   busy: 0, // starting or stopping right now
+  prep: null, // the microphone and the server session, prepared while the page is being measured
+  calKey: null,
+  scan: null,
 };
 
 /** Size of a window frame (VideoFrame, or an ImageBitmap in older paths). */
@@ -100,6 +103,40 @@ function findMarker() {
 }
 
 /**
+ * The same search, much cheaper: the marker is a rectangle, so a row through the middle of it and a column through
+ * the middle of it are enough to find its four edges (two thin strips are read instead of about 1.5 million pixels).
+ */
+function findMarkerFast() {
+  const f = S.latest;
+  if (!f) return null;
+  const W = fw(f), H = fh(f);
+  if (!S.scan || S.scan.canvas.width !== W || S.scan.canvas.height !== H) {
+    const canvas = new OffscreenCanvas(W, H);
+    S.scan = { canvas, ctx: canvas.getContext("2d", { willReadFrequently: true }) };
+  }
+  const { ctx } = S.scan;
+  ctx.drawImage(f, 0, 0);
+  const magenta = (d, i) => d[i] > 200 && d[i + 1] < 70 && d[i + 2] > 200;
+  const extent = (data, n) => {
+    let a = -1, b = -1;
+    for (let k = 0; k < n; k++) if (magenta(data, k * 4)) { if (a < 0) a = k; b = k; }
+    return a < 0 ? null : [a, b];
+  };
+  const row = (y) => extent(ctx.getImageData(0, y, W, 1).data, W);
+  const col = (x) => extent(ctx.getImageData(x, 0, 1, H).data, H);
+  for (const fy of [0.5, 0.4, 0.6, 0.3, 0.7, 0.2, 0.8]) {
+    const r = row(Math.round(H * fy));
+    if (!r || r[1] - r[0] < 100) continue; // both side bars of the marker must be there, far apart
+    const c = col(Math.round((r[0] + r[1]) / 2));
+    if (!c || c[1] - c[0] < 100) continue;
+    const r2 = row(Math.round((c[0] + c[1]) / 2)); // once more, through the true middle
+    if (!r2) continue;
+    return { frame: { w: W, h: H }, x0: r2[0], y0: c[0], w: r2[1] - r2[0] + 1, h: c[1] - c[0] + 1 };
+  }
+  return null;
+}
+
+/**
  * Find the magenta frame the page drew at its edges; that rectangle IS the page inside the window picture.
  * The marker takes a moment to reach the capture (longer on a slow machine), so keep looking for a few seconds
  * instead of trusting a fixed wait.
@@ -107,9 +144,11 @@ function findMarker() {
 async function calibrate(geometry) {
   if (!S.latest) throw new Error("The window is not being captured. Share it first.");
   let m = null;
-  for (let i = 0; i < 40 && !m; i++) {
-    m = findMarker();
-    if (!m) await sleep(100);
+  // look every 25 ms (the marker is found as soon as it reaches the capture); after about a second of failing, use the
+  // thorough full-picture search too
+  for (let i = 0; i < 160 && !m; i++) {
+    m = findMarkerFast() ?? (i >= 40 && i % 10 === 0 ? findMarker() : null);
+    if (!m) await sleep(25);
   }
   if (!m) throw new Error("Could not find the page inside the window picture (marker not seen).");
   S.cal = {
@@ -120,7 +159,16 @@ async function calibrate(geometry) {
     dpr: geometry.dpr,
   };
   S.geo = geometry;
+  // What this measurement is valid for: the window picture's size and the page's size in device pixels (which does
+  // not change with zoom). If either changes, the page has to be measured again.
+  S.calKey = { fw: m.frame.w, fh: m.frame.h, dw: Math.round(geometry.innerW * geometry.dpr), dh: Math.round(geometry.innerH * geometry.dpr) };
   return { frame: m.frame, page: { x: m.x0, y: m.y0, w: m.w, h: m.h }, cal: S.cal };
+}
+
+/** Is the earlier measurement still right for this page? Then Start needs no new measuring (and no marker flash). */
+function calValid(geometry) {
+  const k = S.calKey, f = S.latest;
+  return !!(S.cal && k && f && k.fw === fw(f) && k.fh === fh(f) && k.dw === Math.round(geometry.innerW * geometry.dpr) && k.dh === Math.round(geometry.innerH * geometry.dpr));
 }
 
 /** The part of the newest window frame that is the page, for the tab in front right now. */
@@ -181,6 +229,9 @@ async function openUpload(server, quality, copyVideo) {
   let failed = null;
   return {
     id,
+    abort() {
+      fetch(`${server}/api/live/${id}`, { method: "DELETE" }).catch(() => {});
+    },
     push(blob) {
       chain = chain
         .then(async () => {
@@ -216,12 +267,78 @@ async function openUpload(server, quality, copyVideo) {
   };
 }
 
+const GUM_AUDIO = { audio: { echoCancellation: true, noiseSuppression: true } };
+
+/** Open the microphone and hook up the level meter. Never throws: a missing microphone only means no sound. */
+function openMic(micOn) {
+  return (async () => {
+    try {
+      const mic = await navigator.mediaDevices.getUserMedia(GUM_AUDIO);
+      const track = mic.getAudioTracks()[0];
+      track.enabled = micOn;
+      S.micPeak = 0;
+      S.micState = { readyState: track.readyState, muted: track.muted, label: track.label };
+      const rd = new MediaStreamTrackProcessor({ track }).readable.getReader();
+      (async () => {
+        for (;;) {
+          const { value, done } = await rd.read();
+          if (done) break;
+          const buf = new Float32Array(value.numberOfFrames);
+          try { value.copyTo(buf, { planeIndex: 0, format: "f32-planar" }); } catch { /* format not available */ }
+          let chunk = 0;
+          for (const x of buf) chunk = Math.max(chunk, Math.abs(x));
+          S.micPeak = Math.max(S.micPeak, chunk);
+          S.micLevel = Math.max(chunk, (S.micLevel || 0) * 0.97); // quick up, slow down
+          value.close();
+        }
+      })();
+      return { mic, track, issue: null };
+    } catch (e) {
+      return { mic: null, track: null, issue: `No microphone (${e.message}); recording without sound.` };
+    }
+  })();
+}
+
+/**
+ * Start the slow things now: the microphone (a device has to be opened) and the server session. The caller keeps
+ * measuring the page meanwhile, and `start` then only has to collect the results.
+ */
+function beginPrepare({ micOn = true, quality = "standard", server = "http://localhost:4000", codec = "h264" } = {}) {
+  cancelPrepare();
+  const h264 = codec === "h264" && MediaRecorder.isTypeSupported("video/webm;codecs=h264,opus");
+  const upload = openUpload(server, quality, h264);
+  upload.catch(() => {}); // reported where it is used
+  S.prep = { upload, mic: openMic(micOn), h264 };
+}
+
+function cancelPrepare() {
+  const p = S.prep;
+  S.prep = null;
+  if (!p) return;
+  p.mic.then((m) => m.mic?.getTracks().forEach((t) => t.stop()));
+  p.upload.then((u) => u.abort(), () => {});
+}
+
+/** One throw-away microphone opening, done once when the window is shared: the first opening of the audio system is slow. */
+async function prewarmMic() {
+  try {
+    if ((await navigator.permissions.query({ name: "microphone" })).state !== "granted") return { skipped: true };
+    const t0 = performance.now();
+    (await navigator.mediaDevices.getUserMedia(GUM_AUDIO)).getTracks().forEach((t) => t.stop());
+    return { ok: true, ms: Math.round(performance.now() - t0) };
+  } catch (e) {
+    return { error: String(e.message ?? e) };
+  }
+}
+
 /** codec: "h264" (the browser encodes, the server only repackages) or "vp9" (the server re-encodes to H.264). */
-async function startUnsafe({ micOn = true, quality = "standard", server = "http://localhost:4000", codec = "h264", debugRaw = false } = {}) {
+async function startUnsafe(options = {}) {
+  const { debugRaw = false } = options;
   S.pieces = debugRaw ? [] : null;
   if (S.recorder) throw new Error("Already recording.");
   if (!S.cal || !S.geo) throw new Error("Not calibrated yet.");
 
+  const T0 = performance.now();
   S.out = { w: even(S.geo.innerW * S.cal.scaleX), h: even(S.geo.innerH * S.cal.scaleY) };
   S.canvas = document.createElement("canvas");
   S.canvas.width = S.out.w;
@@ -230,39 +347,19 @@ async function startUnsafe({ micOn = true, quality = "standard", server = "http:
   const canvasStream = S.canvas.captureStream(0);
   S.videoTrack = canvasStream.getVideoTracks()[0];
 
+  if (!S.prep) beginPrepare(options); // (normally already begun by "prepare", while the page was being measured)
+  const prep = S.prep;
+  S.prep = null;
   const tracks = [S.videoTrack];
-  S.micIssue = null;
-  const h264 = codec === "h264" && MediaRecorder.isTypeSupported("video/webm;codecs=h264,opus");
-  // The microphone and the server answer independently: ask both at once instead of one after the other.
-  const uploadReady = openUpload(server, quality, h264);
-  uploadReady.catch(() => {}); // reported below
-  try {
-    S.mic = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
-    S.micTrack = S.mic.getAudioTracks()[0];
-    S.micTrack.enabled = micOn;
-    tracks.push(S.micTrack);
-    // Diagnostics and the level meter: the loudest sample the microphone delivers while recording.
-    S.micPeak = 0;
-    S.micState = { readyState: S.micTrack.readyState, muted: S.micTrack.muted, label: S.micTrack.label };
-    const rd = new MediaStreamTrackProcessor({ track: S.micTrack }).readable.getReader();
-    (async () => {
-      for (;;) {
-        const { value, done } = await rd.read();
-        if (done) break;
-        const buf = new Float32Array(value.numberOfFrames);
-        try { value.copyTo(buf, { planeIndex: 0, format: "f32-planar" }); } catch { /* format not available */ }
-        let chunk = 0;
-        for (const x of buf) chunk = Math.max(chunk, Math.abs(x));
-        S.micPeak = Math.max(S.micPeak, chunk);
-        S.micLevel = Math.max(chunk, (S.micLevel || 0) * 0.97); // quick up, slow down
-        value.close();
-      }
-    })();
-  } catch (e) {
-    S.micIssue = `No microphone (${e.message}); recording without sound.`;
-  }
-
-  S.upload = await uploadReady;
+  const m = await prep.mic;
+  S.mic = m.mic;
+  S.micTrack = m.track;
+  S.micIssue = m.issue;
+  if (m.track) tracks.push(m.track);
+  const T1 = performance.now(); // microphone is ready
+  const h264 = prep.h264;
+  S.upload = await prep.upload;
+  const T2 = performance.now(); // the server session is ready
   S.recorder = new MediaRecorder(new MediaStream(tracks), {
     mimeType: h264
       ? "video/webm;codecs=h264,opus"
@@ -291,7 +388,7 @@ async function startUnsafe({ micOn = true, quality = "standard", server = "http:
   S.startedAt = Date.now();
   S.pausedAt = 0;
   S.pausedTotal = 0;
-  return { ok: true, out: S.out, micIssue: S.micIssue, codec: S.codecUsed, startedAt: S.startedAt };
+  return { ok: true, out: S.out, micIssue: S.micIssue, codec: S.codecUsed, startedAt: S.startedAt, timings: { micMs: Math.round(T1 - T0), serverWaitMs: Math.round(T2 - T1), totalMs: Math.round(performance.now() - T0) } };
 }
 
 async function start(options = {}) {
@@ -303,6 +400,9 @@ async function start(options = {}) {
     S.recorder = null;
     S.mic?.getTracks().forEach((t) => t.stop());
     S.mic = S.micTrack = null;
+    S.upload?.abort();
+    S.upload = null;
+    cancelPrepare();
     throw e;
   } finally {
     S.busy--;
@@ -389,6 +489,16 @@ chrome.runtime.onMessage.addListener((m, _sender, reply) => {
         return attachDisplay();
       case "calibrate":
         return calibrate(m.geometry);
+      case "prepare":
+        beginPrepare(m);
+        return { ok: true };
+      case "cancelPrepare":
+        cancelPrepare();
+        return { ok: true };
+      case "prewarm":
+        return prewarmMic();
+      case "calValid":
+        return { valid: calValid(m.geometry) };
       case "geometry":
         S.geo = { innerW: m.innerW, innerH: m.innerH, dpr: m.dpr };
         return { ok: true };
