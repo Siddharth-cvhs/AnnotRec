@@ -1,4 +1,5 @@
 // Runs every extension test, one after another, and prints a summary.
+//   BROWSER=edge|brave|chrome picks the browser (default edge)
 //   node test/all.mjs            (add --soak=90 for a 90 s endurance recording inside the demo test)
 import { spawnSync } from "node:child_process";
 import path from "node:path";
@@ -7,6 +8,7 @@ const HERE = path.dirname(new URL(import.meta.url).pathname.replace(/^\//, ""));
 const soak = process.argv.find((a) => a.startsWith("--soak="))?.split("=")[1];
 const SUITES = [
   ["static", "manifest, permissions, files, source rules"],
+  ["compat", "this browser has every API the extension needs"],
   ["tools", "every drawing tool, undo/redo, select, eraser, shortcuts"],
   ["latency", "freeze time, drawing smoothness over 400 shapes"],
   ["panel", "side panel, permission flow, saved folder"],
@@ -18,8 +20,9 @@ const SUITES = [
   ["demo", "shortcuts, badge, clock, meter, navigating mid-recording"],
   ["autoreload", "a rebuild is picked up, never mid-recording"],
 ];
+// Only browsers started by these tests are touched (their profile folder is named annotrec-extprof-*).
 const killLeftovers = () =>
-  spawnSync("powershell", ["-NoProfile", "-Command", `Get-CimInstance Win32_Process -Filter "Name='msedge.exe'" | Where-Object { $_.CommandLine -match 'annotrec-ext' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }`], { stdio: "ignore" });
+  spawnSync("powershell", ["-NoProfile", "-Command", `Get-CimInstance Win32_Process | Where-Object { $_.Name -in 'msedge.exe','brave.exe','chrome.exe' -and $_.CommandLine -match 'annotrec-extprof' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }`], { stdio: "ignore" });
 
 const rows = [];
 for (const [name, what] of SUITES) {

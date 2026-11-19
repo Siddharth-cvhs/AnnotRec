@@ -8,6 +8,7 @@
 //   - ink is in the video only while frozen, and in the right tab
 //   - there is sound, and the length matches
 import { chromium } from "../../../node_modules/playwright-core/index.mjs";
+import { launch, launchOptions, SCHEME, PROCESS, extensionWorker, rmQuiet, windowFlag } from "./browser.mjs";
 import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import http from "node:http";
@@ -49,8 +50,8 @@ for (let i = 0; i < 40; i++) {
 
 // ---- Edge with the extension, a fake microphone, and the window picker answered automatically
 const profile = fs.mkdtempSync(path.join(os.tmpdir(), "annotrec-extprof-"));
-const ctx = await chromium.launchPersistentContext(profile, {
-  channel: "msedge",
+const ctx = await launch(chromium, profile, {
+  ...launchOptions(),
   headless: false,
   timeout: 40000,
   viewport: null,
@@ -58,7 +59,7 @@ const ctx = await chromium.launchPersistentContext(profile, {
     `--disable-extensions-except=${extDir}`,
     `--load-extension=${extDir}`,
     "--disable-features=DisableLoadExtensionCommandLineSwitch,CalculateNativeWinOcclusion",
-    "--auto-select-desktop-capture-source=SpikeWindow A and",
+    windowFlag("SpikeWindow A"),
     "--auto-accept-camera-and-microphone-capture",
     "--use-fake-device-for-media-stream",
     "--window-size=1300,850",
@@ -97,7 +98,7 @@ const ink = (f) => {
 };
 
 try {
-  const sw = ctx.serviceWorkers()[0] ?? (await ctx.waitForEvent("serviceworker", { timeout: 15000 }));
+  const sw = await extensionWorker(ctx);
   const api = (fn, ...args) => sw.evaluate(([f, a]) => self.api[f](...a), [fn, args]);
   await api("setServer", "http://localhost:4600");
 
@@ -198,8 +199,10 @@ try {
     return n / tot;
   });
   check(edge.every((s) => s > 0.9), "the right edge is page too (no window border or side panel)", edge.map((s) => `${(s * 100).toFixed(0)}%`).join(" "));
-  const fps = (saved.framesDrawn / (saved.durationMs / 1000));
-  check(fps > 20, "the cropping compositor keeps up", `${fps.toFixed(1)} frames per second drawn`);
+  const tickRate = saved.ticks / (saved.durationMs / 1000);
+  const drawRate = saved.framesDrawn / (saved.durationMs / 1000);
+  check(tickRate > 20, "the cropping loop keeps its 30-per-second rhythm", `${tickRate.toFixed(1)} ticks per second`);
+  check(drawRate >= 1.5 && saved.skipped > 0, "and skips pictures when nothing changed (never fewer than 2 per second)", `${drawRate.toFixed(1)} drawn per second, ${saved.skipped} skipped`);
 } catch (e) {
   console.log("  FAIL  test crashed:", e.message.split("\n")[0]);
   results.push(false);
@@ -207,7 +210,7 @@ try {
   await ctx.close().catch(() => {});
   server.kill();
   site.close();
-  for (const d of [profile, extDir, recDir]) fs.rmSync(d, { recursive: true, force: true });
+  for (const d of [profile, extDir, recDir]) rmQuiet(d);
   const bad = results.filter((x) => !x).length;
   console.log(`\n${results.length - bad}/${results.length} checks passed`);
   process.exit(bad ? 1 : 0);

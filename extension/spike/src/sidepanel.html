@@ -58,7 +58,7 @@
 </head>
 <body>
   <a class="skip" href="#tools">Skip to the drawing tools</a>
-  <h1>AnnotRec <small>Edge extension</small></h1>
+  <h1>AnnotRec <small id="browsername">browser extension</small></h1>
   <div id="recbar" class="recbar idle">
     <span class="dot"></span><span id="recstate">Ready</span><span id="clock">00:00</span>
     <span class="meter" title="Microphone level"><i id="level"></i></span>
@@ -75,7 +75,7 @@
       <div id="helptext"></div>
       <div class="row">
         <button id="helpallow" class="primary">Ask again</button>
-        <button id="helpedge">Edge microphone settings</button>
+        <button id="helpbrowser">Browser microphone settings</button>
         <a id="helpwin" class="btn" href="ms-settings:privacy-microphone" target="_blank">Windows microphone settings</a>
       </div>
     </div>
@@ -131,8 +131,10 @@
       <input id="server" type="text" spellcheck="false" placeholder="http://localhost:4000">
       <button id="saveserver">Save</button>
     </div>
+    <label class="row" id="autoreloadrow" hidden><input id="autoreload" type="checkbox"> Developer: reload automatically after a rebuild</label>
   </details>
   <div class="keys">Shortcuts from any page: <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>R</kbd> record / stop · <kbd>P</kbd> pause · <kbd>D</kbd> draw / go live. While drawing: <kbd>V</kbd> select, <kbd>B</kbd> pen, <kbd>H</kbd> highlight, <kbd>A</kbd> arrow, <kbd>R</kbd> box, <kbd>O</kbd> circle, <kbd>T</kbd> text, <kbd>M</kbd> marker, <kbd>E</kbd> erase, <kbd>Ctrl</kbd>+<kbd>Z</kbd> undo, <kbd>Esc</kbd> clear.</div>
+  <script src="browser-info.js"></script>
   <script src="sidepanel.js"></script>
 </body>
 </html>

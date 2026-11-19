@@ -4,7 +4,7 @@ const call = (fn, ...args) => chrome.runtime.sendMessage({ type: "api", fn, args
 
 const friendly = (e) =>
   /Receiving end does not exist|Cannot access|cannot be scripted|No tab with id|extensions gallery/i.test(e)
-    ? "Drawing is not available on this page. Browser pages (edge://, the extension store, new tab) cannot be drawn on. Open a normal website."
+    ? "Drawing is not available on this page. Browser pages (settings, the extension store, new tab) cannot be drawn on. Open a normal website."
     : e;
 
 async function run(fn, ...args) {
@@ -55,7 +55,7 @@ async function ensureShared() {
   const r = await call("pick");
   if (r?.error) {
     $("err").textContent = /denied|dismiss|NotAllowed|cancel/i.test(r.error)
-      ? "Window sharing was cancelled or blocked. Press Start again, then choose your Edge window (Window tab) and press Share."
+      ? "Window sharing was cancelled or blocked. Press Start again, then choose this browser window (Window tab) and press Share."
       : r.error;
     return false;
   }
@@ -88,7 +88,9 @@ $("mic").onclick = async () => {
   await ensureMic();
 };
 $("helpallow").onclick = openMicTab;
-$("helpedge").onclick = () => chrome.tabs.create({ url: "edge://settings/content/microphone" });
+$("helpbrowser").onclick = () => chrome.tabs.create({ url: self.annotBrowser.microphoneSettings });
+$("helpbrowser").textContent = `${self.annotBrowser.name} microphone settings`;
+$("browsername").textContent = `${self.annotBrowser.name} extension`;
 $("start").onclick = async () => {
   $("err").textContent = "";
   if (!(await ensureMic())) return;
@@ -191,7 +193,23 @@ async function refresh() {
     } else if (h?.error || !h) $("folder").textContent = "The AnnotRec server is not reachable. Start it with npm start.";
   }
 }
-setInterval(refresh, 300);
+// Fast while recording (clock and level meter), slow otherwise: an idle panel should cost the browser nothing.
+let timer = 0;
+let fast = false;
+const schedule = () => {
+  clearInterval(timer);
+  timer = setInterval(refresh, fast ? 300 : 1200);
+};
+const baseRefresh = refresh;
+refresh = async function refreshAndPace() {
+  await baseRefresh();
+  const rec = document.getElementById("recbar").className.includes("rec") || document.getElementById("recbar").className.includes("paused");
+  if (rec !== fast) {
+    fast = rec;
+    schedule();
+  }
+};
+schedule();
 refresh();
 
 $("openfolder").onclick = () => run("reveal");
@@ -232,3 +250,12 @@ chrome.storage.local.get("lastEnded").then(({ lastEnded }) => {
 chrome.runtime.onMessage.addListener((m) => {
   if (m?.type === "auto-stopped") showEnded({ reason: m.reason, name: m.saved?.name, error: m.error });
 });
+
+// ------------------------------------------------------------------ developer setting (only for an unpacked install)
+(async () => {
+  const r = await call("getAutoReload");
+  if (!r?.unpacked) return;
+  $("autoreloadrow").hidden = false;
+  $("autoreload").checked = !!r.on;
+})();
+$("autoreload").onchange = () => call("setAutoReload", $("autoreload").checked);

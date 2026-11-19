@@ -1,6 +1,7 @@
 // Takes pictures of the extension for the docs: the side panel, and a page with annotations drawn on it.
 //   node test/shots.mjs [outputFolder]     (default: extension/docs)
 import { chromium } from "../../../node_modules/playwright-core/index.mjs";
+import { launch, launchOptions, SCHEME, PROCESS, extensionWorker, rmQuiet } from "./browser.mjs";
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import http from "node:http";
@@ -29,13 +30,13 @@ const site = http.createServer((_q, res) => {
 });
 await new Promise((r) => site.listen(5078, "127.0.0.1", r));
 const profile = fs.mkdtempSync(path.join(os.tmpdir(), "annotrec-extprof-"));
-const ctx = await chromium.launchPersistentContext(profile, {
-  channel: "msedge", headless: false, timeout: 40000, viewport: { width: 1100, height: 700 },
+const ctx = await launch(chromium, profile, {
+  ...launchOptions(), headless: false, timeout: 40000, viewport: { width: 1100, height: 700 },
   args: [`--disable-extensions-except=${extDir}`, `--load-extension=${extDir}`,
     "--disable-features=DisableLoadExtensionCommandLineSwitch,CalculateNativeWinOcclusion", "--no-first-run", "--no-default-browser-check"],
 });
 try {
-  const sw = ctx.serviceWorkers()[0] ?? (await ctx.waitForEvent("serviceworker", { timeout: 15000 }));
+  const sw = await extensionWorker(ctx);
   const api = (fn, ...args) => sw.evaluate(([f, a]) => self.api[f](...a), [fn, args]);
   const P = await ctx.newPage();
   await P.goto("http://localhost:5078/");

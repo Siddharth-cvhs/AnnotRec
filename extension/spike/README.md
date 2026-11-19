@@ -1,6 +1,6 @@
-# AnnotRec browser extension: spike (Version 3)
+# AnnotRec browser extension (Version 3)
 
-A Manifest V3 extension for **Microsoft Edge**. Record the page you are looking at, switch tabs while recording, freeze and draw on any page, Clear All to go live again, and get one MP4 made by our own FFmpeg server (Version 2). Details and findings: `../NOTES.md` section 18.
+A Manifest V3 extension for **Microsoft Edge, Google Chrome and Brave** (any Chromium browser, version 116 or newer). Record the page you are looking at, switch tabs while recording, freeze and draw on any page, Clear All to go live again, and get one MP4 made by our own FFmpeg server (Version 2). Details and findings: `../NOTES.md` section 18.
 
 ## Run it
 1. Start the Version 2 server with the extension allowed (id is fixed by `key.json`):
@@ -11,7 +11,7 @@ A Manifest V3 extension for **Microsoft Edge**. Record the page you are looking 
    ```
    FFmpeg must be installed.
 2. Build: `node build.mjs` (writes `dist/`).
-3. Open `edge://extensions`, turn on Developer mode, **Load unpacked**, choose `dist`.
+3. Open the extensions page (`edge://extensions`, `chrome://extensions` or `brave://extensions`), turn on Developer mode, **Load unpacked**, choose `dist`.
 4. Click the extension icon to open the side panel: **Share window** (once), **Allow microphone** (once), **Start**.
 
 ## Tests
@@ -60,3 +60,25 @@ In the folder of the server that makes the MP4: by default `recordings` inside t
 - Permissions: `offscreen`, `sidePanel`, `storage`, `tabs`, `scripting`, and page access to draw on sites. No capture permission, nothing exposed to websites.
 - Start checks the server and FFmpeg first and says what is wrong in plain words. Pieces of the recording are retried if the server hiccups. If you press "Stop sharing" in the middle of a recording, it is saved, not lost, and the panel tells you why it stopped.
 - Browser pages (`edge://`, the extension store) cannot be drawn on; the panel says so.
+
+## Browsers
+| | Edge | Chrome | Brave |
+|---|---|---|---|
+| All extension and web APIs the recorder needs (`test/compat.mjs`) | yes | yes | yes |
+| Full test suite (`BROWSER=<name> npm run ext:test`) | all pass | all pass | all pass |
+| Same extension id everywhere (fixed by `key.json`) | yes | yes | yes |
+| Self-reload after a rebuild | on by default | off by default (setting) | off by default (setting) |
+
+Edge was the first target; Chrome and Brave run the same code. The only differences are the wording and the address of the browser's own settings page (`edge://`, `chrome://`, `brave://`), which the panel works out by itself, and the developer self-reload described below.
+
+**Testing in another browser:** `BROWSER=chrome npm run ext:test` or `BROWSER=brave npm run ext:test`. Chrome 137 and later ignore `--load-extension`, so the tests install the extension there through the DevTools protocol.
+
+**Self-reload is a developer convenience.** In Edge it is on by default (proven by `test/autoreload.mjs`). In Chrome and Brave it is a checkbox in the panel's Settings, off by default: the browsers' own tooling installs the extension in a way that does not come back after `chrome.runtime.reload()`, and when you install with **Load unpacked** I have not been able to confirm that in an automated test. If you want it, turn it on and see; if the extension ever vanishes, load it again and leave it off. Otherwise press the reload arrow on the extensions page after a rebuild.
+
+## Speed
+Measured by `test/perf.mjs` on a 12-core laptop, recording a 1596x946 window:
+- Moving page: 30 fps in the MP4, about 8-10% of the machine (about 5% of that is the page itself).
+- **Still page** (most of a demo: you talk over a page): about 1.5% of the machine. The recorder skips pictures that would be identical to the last one and still draws at least two per second, so the video is never shorter than the sound.
+- Smoothness: at most five visible hitches (over 100 ms) in a whole recording, none over half a second.
+- Start asks the microphone and the server at the same time, and checks the server while it measures the page, so it starts sooner. Stop takes under a second. Freezing a page takes about 10-100 ms in Edge and Brave and about 0.3 s in Chrome (its own page-picture call is slower, and it allows only two per second, which the extension waits out). Drawing over 400 shapes keeps 60 fps.
+- The side panel polls slowly (every 1.2 s) when nothing is recording and fast (0.3 s, for the clock and meter) only while recording.

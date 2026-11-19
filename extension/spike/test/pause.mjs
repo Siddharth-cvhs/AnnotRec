@@ -4,6 +4,7 @@
 // top-left of the video and the page colour fills the picture; if browser UI leaked in, the text would
 // be shifted down and other colours would show.
 import { chromium } from "../../../node_modules/playwright-core/index.mjs";
+import { launch, launchOptions, SCHEME, PROCESS, extensionWorker, rmQuiet, windowFlag } from "./browser.mjs";
 import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import http from "node:http";
@@ -34,11 +35,11 @@ await new Promise((r) => site.listen(5077, "127.0.0.1", r));
 for (let i = 0; i < 40; i++) { try { if ((await fetch("http://localhost:4604/api/health")).ok) break; } catch { /* starting */ } await sleep(200); }
 
 const profile = fs.mkdtempSync(path.join(os.tmpdir(), "annotrec-extprof-"));
-const ctx = await chromium.launchPersistentContext(profile, {
-  channel: "msedge", headless: false, timeout: 40000, viewport: null,
+const ctx = await launch(chromium, profile, {
+  ...launchOptions(), headless: false, timeout: 40000, viewport: null,
   args: [`--disable-extensions-except=${extDir}`, `--load-extension=${extDir}`,
     "--disable-features=DisableLoadExtensionCommandLineSwitch,CalculateNativeWinOcclusion",
-    "--auto-select-desktop-capture-source=SpikeWindow P and", "--auto-accept-camera-and-microphone-capture",
+    windowFlag("SpikeWindow P"), "--auto-accept-camera-and-microphone-capture",
     "--use-fake-device-for-media-stream", "--window-size=1300,850", "--no-first-run", "--no-default-browser-check"],
 });
 
@@ -54,7 +55,7 @@ const frameAt = (file, t) => {
 };
 
 try {
-  const sw = ctx.serviceWorkers()[0] ?? (await ctx.waitForEvent("serviceworker", { timeout: 15000 }));
+  const sw = await extensionWorker(ctx);
   const api = (fn, ...args) => sw.evaluate(([f, a]) => self.api[f](...a), [fn, args]);
   await api("setServer", "http://localhost:4604");
   const P = await ctx.newPage();

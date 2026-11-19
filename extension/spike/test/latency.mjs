@@ -1,6 +1,7 @@
 // How fast does it react? Time to freeze a page, and the cost of drawing on a page that already has many shapes.
 //   node test/latency.mjs
 import { chromium } from "../../../node_modules/playwright-core/index.mjs";
+import { BROWSER, launch, launchOptions, SCHEME, PROCESS, extensionWorker, rmQuiet } from "./browser.mjs";
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import http from "node:http";
@@ -21,14 +22,14 @@ const site = http.createServer((_q, res) => {
 });
 await new Promise((r) => site.listen(5080, "127.0.0.1", r));
 const profile = fs.mkdtempSync(path.join(os.tmpdir(), "annotrec-extprof-"));
-const ctx = await chromium.launchPersistentContext(profile, {
-  channel: "msedge", headless: false, timeout: 40000, viewport: null,
+const ctx = await launch(chromium, profile, {
+  ...launchOptions(), headless: false, timeout: 40000, viewport: null,
   args: [`--disable-extensions-except=${extDir}`, `--load-extension=${extDir}`,
     "--disable-features=DisableLoadExtensionCommandLineSwitch,CalculateNativeWinOcclusion",
     "--window-size=1300,850", "--no-first-run", "--no-default-browser-check"],
 });
 try {
-  const sw = ctx.serviceWorkers()[0] ?? (await ctx.waitForEvent("serviceworker", { timeout: 15000 }));
+  const sw = await extensionWorker(ctx);
   const api = (fn, ...args) => sw.evaluate(([f, a]) => self.api[f](...a), [fn, args]);
   const P = await ctx.newPage();
   await P.goto("http://localhost:5080/");
@@ -42,11 +43,13 @@ try {
     await api("freeze");
     times.push(Date.now() - t);
     await api("clear");
-    await sleep(150);
+    await sleep(650); // Chrome allows two page pictures per second; people do not freeze faster than that
   }
   times.sort((a, b) => a - b);
   console.log(`  info  freeze takes ${times.join(", ")} ms`);
-  check(times[2] < 250, "freezing the page takes under 250 ms (median)", `${times[2]} ms`);
+  // Chrome's own page-picture call is slower than Edge's and Brave's (about 0.3 s), so its limit is wider
+  const limit = BROWSER === "chrome" ? 500 : 250;
+  check(times[2] < limit, `freezing the page takes under ${limit} ms (median)`, `${times[2]} ms`);
 
   // drawing: 400 shapes on the page, then one more long stroke; measure frame cost inside the page
   await api("freeze");
@@ -74,7 +77,7 @@ try {
 } finally {
   await ctx.close().catch(() => {});
   site.close();
-  for (const d of [profile, extDir]) fs.rmSync(d, { recursive: true, force: true });
+  for (const d of [profile, extDir]) rmQuiet(d);
 }
 const ok = results.filter(Boolean).length;
 console.log(`\n${ok}/${results.length} checks passed`);

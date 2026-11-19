@@ -1,6 +1,7 @@
 // The side panel and the permission flow (the panel is opened as a normal tab, which is how a test can reach it).
 //   node test/panel.mjs
 import { chromium } from "../../../node_modules/playwright-core/index.mjs";
+import { launch, launchOptions, SCHEME, PROCESS, extensionWorker, rmQuiet } from "./browser.mjs";
 import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
@@ -23,13 +24,13 @@ const server = spawn(process.execPath, [path.join(ROOT, "server", "index.js")], 
 });
 for (let i = 0; i < 40; i++) { try { if ((await fetch("http://localhost:4606/api/health")).ok) break; } catch { /* starting */ } await sleep(200); }
 const profile = fs.mkdtempSync(path.join(os.tmpdir(), "annotrec-extprof-"));
-const ctx = await chromium.launchPersistentContext(profile, {
-  channel: "msedge", headless: false, timeout: 40000,
+const ctx = await launch(chromium, profile, {
+  ...launchOptions(), headless: false, timeout: 40000,
   args: [`--disable-extensions-except=${extDir}`, `--load-extension=${extDir}`, "--disable-features=DisableLoadExtensionCommandLineSwitch",
     "--auto-accept-camera-and-microphone-capture", "--use-fake-device-for-media-stream", "--no-first-run", "--no-default-browser-check"],
 });
 try {
-  const sw = ctx.serviceWorkers()[0] ?? (await ctx.waitForEvent("serviceworker", { timeout: 15000 }));
+  const sw = await extensionWorker(ctx);
   await sw.evaluate(() => self.api.setServer("http://localhost:4606"));
   const page = await ctx.newPage();
   const errors = [];
@@ -63,7 +64,7 @@ try {
   await denied.goto(`chrome-extension://${EXT_ID}/permission.html`);
   await denied.waitForFunction(() => document.getElementById("msg").textContent.includes("Permission denied"), null, { timeout: 5000 });
   check(true, "a refused microphone says 'Microphone: Permission denied'");
-  check((await denied.isVisible("#edge")) && (await denied.isVisible("#win")) && (await denied.isVisible("#steps")), "and shows the Edge settings, the Windows settings and the steps");
+  check((await denied.isVisible("#browsersettings")) && (await denied.isVisible("#win")) && (await denied.isVisible("#steps")), "and shows the browser settings, the Windows settings and the steps");
   const href = await denied.getAttribute("#win", "href");
   check(href === "ms-settings:privacy-microphone", "the Windows button points at Windows' microphone privacy page", href);
   check(errors.length === 0, "no script errors in the panel", errors.join(" | "));
@@ -73,7 +74,7 @@ try {
 } finally {
   await ctx.close().catch(() => {});
   server.kill();
-  for (const d of [profile, extDir, recDir]) fs.rmSync(d, { recursive: true, force: true });
+  for (const d of [profile, extDir, recDir]) rmQuiet(d);
   const bad = results.filter((x) => !x).length;
   console.log(`\n${results.length - bad}/${results.length} checks passed`);
   process.exit(bad ? 1 : 0);

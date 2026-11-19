@@ -27,7 +27,12 @@ async function off(message) {
 }
 
 async function activeTab() {
-  const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+  let [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+  if (!tab || !tab.url || /^chrome-extension:/.test(tab.url)) {
+    // the controls were opened in their own window: use the page window behind it
+    const win = await chrome.windows.getLastFocused({ windowTypes: ["normal"] }).catch(() => null);
+    if (win) [tab] = await chrome.tabs.query({ active: true, windowId: win.id });
+  }
   if (!tab) throw new Error("There is no active tab.");
   return tab;
 }
@@ -61,6 +66,15 @@ const api = {
 
   async getServer() {
     return { server: await serverUrl() };
+  },
+
+  /** Developer setting: reload by itself after a rebuild (default: on in Edge only). */
+  async getAutoReload() {
+    return { on: await autoReloadOn(), unpacked: IS_UNPACKED };
+  },
+  async setAutoReload(on) {
+    await chrome.storage.local.set({ autoReload: !!on });
+    return { ok: true };
   },
 
   /** Share the browser window, once. The picture follows whichever tab is in front. */
@@ -97,8 +111,7 @@ const api = {
   },
 
   async start(options = {}) {
-    await api.preflight();
-    const cal = await api.calibrate();
+    const [, cal] = await Promise.all([api.preflight(), api.calibrate()]);
     await off({ type: "geometry", ...(await toTab({ type: "marker", on: false })) });
     // The recorder page has no storage access (offscreen pages only get the messaging API): pass the server address in.
     const { server } = await chrome.storage.local.get("server");
@@ -163,12 +176,21 @@ self.api = api;
 // An unpacked extension is read from disk. `node build.mjs` writes version.txt; when it changes and nothing is being
 // recorded, the extension reloads itself, so you never have to press the reload arrow. (Not used in a packed build.)
 const IS_UNPACKED = !chrome.runtime.getManifest().update_url;
+// Self-reload is on by default only where it is proven to work (Edge). In Chrome and Brave it is a setting that is off
+// by default: if a build of the browser cannot bring an extension back after chrome.runtime.reload(), the developer's
+// extension would vanish. (Settings in the side panel: "Reload automatically after a rebuild".)
+const IS_EDGE = (navigator.userAgentData?.brands ?? []).some((x) => x.brand === "Microsoft Edge") || /Edg\//.test(navigator.userAgent);
+async function autoReloadOn() {
+  const { autoReload } = await chrome.storage.local.get("autoReload");
+  return autoReload ?? IS_EDGE;
+}
 let myVersion = null;
 let lastCheck = 0;
 async function reloadIfRebuilt() {
   if (!IS_UNPACKED || Date.now() - lastCheck < 3000) return;
   lastCheck = Date.now();
   try {
+    if (!(await autoReloadOn())) return;
     const v = (await (await fetch(chrome.runtime.getURL("version.txt"), { cache: "no-store" })).text()).trim();
     if (myVersion === null) myVersion = v;
     else if (v !== myVersion && !(await off({ type: "status" })).busy) chrome.runtime.reload();
@@ -200,10 +222,19 @@ chrome.runtime.onMessage.addListener((m, sender, reply) => {
   }
   if (m?.type === "snapshot") {
     // A picture of the page (without our overlay, which is empty at that moment), to freeze it.
-    chrome.tabs.captureVisibleTab(sender.tab.windowId, { format: "jpeg", quality: 96 }).then(
-      (url) => reply({ url }),
-      (e) => reply({ error: String(e.message ?? e) }),
-    );
+    // Chrome allows two of these per second. Freezing, clearing and freezing again quickly (the draw shortcut) can
+    // exceed that: wait out the quota and try once more instead of failing.
+    const take = () => chrome.tabs.captureVisibleTab(sender.tab.windowId, { format: "jpeg", quality: 96 });
+    take()
+      .catch(async (e) => {
+        if (!/MAX_CAPTURE_VISIBLE_TAB_CALLS_PER_SECOND|quota/i.test(String(e.message ?? e))) throw e;
+        await sleep(600);
+        return take();
+      })
+      .then(
+        (url) => reply({ url }),
+        (e) => reply({ error: String(e.message ?? e) }),
+      );
     return true;
   }
 });
@@ -214,7 +245,15 @@ chrome.tabs.onActivated.addListener(({ tabId }) => {
 });
 
 // Toolbar icon opens the side panel (the controls live beside the page, never inside the recording).
-chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => {});
+if (chrome.sidePanel?.setPanelBehavior) {
+  chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => {});
+} else {
+  chrome.action.onClicked.addListener(async () => {
+    const existing = (await chrome.windows.getAll({ populate: true, windowTypes: ["popup"] })).find((w) => w.tabs?.some((t) => t.url?.startsWith(chrome.runtime.getURL("sidepanel.html"))));
+    if (existing) return chrome.windows.update(existing.id, { focused: true });
+    chrome.windows.create({ url: "sidepanel.html", type: "popup", width: 400, height: 820 });
+  });
+}
 
 // Pages that were already open when the extension was installed get the content script too.
 chrome.runtime.onInstalled.addListener(async () => {
@@ -224,7 +263,7 @@ chrome.runtime.onInstalled.addListener(async () => {
 });
 
 // ------------------------------------------------------------------ keyboard shortcuts
-// Work from any page, so a demo never needs the mouse on the side panel. (Change them at edge://extensions/shortcuts.)
+// Work from any page, so a demo never needs the mouse on the side panel. (Change them on the browser's extension shortcuts page.)
 async function onCommand(command, tab) {
   try {
     const s = await off({ type: "status" });
@@ -246,7 +285,7 @@ async function onCommand(command, tab) {
     // Not ready (window not shared, microphone not allowed...): show the side panel, which explains and fixes it.
     badge("!", "#ef4444");
     setTimeout(() => badge(""), 3000);
-    if (tab?.windowId) chrome.sidePanel.open({ windowId: tab.windowId }).catch(() => {});
+    if (tab?.windowId && chrome.sidePanel?.open) chrome.sidePanel.open({ windowId: tab.windowId }).catch(() => {});
   }
 }
 self.onCommand = onCommand; // also callable from tests

@@ -2,6 +2,7 @@
 // and it never does that in the middle of a recording.
 //   node test/autoreload.mjs
 import { chromium } from "../../../node_modules/playwright-core/index.mjs";
+import { BROWSER, launch, launchOptions, SCHEME, PROCESS, extensionWorker, rmQuiet, windowFlag } from "./browser.mjs";
 import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import http from "node:http";
@@ -29,15 +30,15 @@ await new Promise((r) => site.listen(5083, "127.0.0.1", r));
 for (let i = 0; i < 40; i++) { try { if ((await fetch("http://localhost:4622/api/health")).ok) break; } catch { /* starting */ } await sleep(200); }
 
 const profile = fs.mkdtempSync(path.join(os.tmpdir(), "annotrec-extprof-"));
-const ctx = await chromium.launchPersistentContext(profile, {
-  channel: "msedge", headless: false, timeout: 40000, viewport: null,
+const ctx = await launch(chromium, profile, {
+  ...launchOptions(), headless: false, timeout: 40000, viewport: null,
   args: [`--disable-extensions-except=${extDir}`, `--load-extension=${extDir}`,
     "--disable-features=DisableLoadExtensionCommandLineSwitch,CalculateNativeWinOcclusion",
-    "--auto-select-desktop-capture-source=SpikeWindow U and", "--auto-accept-camera-and-microphone-capture",
+    windowFlag("SpikeWindow U"), "--auto-accept-camera-and-microphone-capture",
     "--use-fake-device-for-media-stream", "--window-size=1300,850", "--no-first-run", "--no-default-browser-check"],
 });
 try {
-  let sw = ctx.serviceWorkers()[0] ?? (await ctx.waitForEvent("serviceworker", { timeout: 15000 }));
+  let sw = await extensionWorker(ctx);
   const api = (fn, ...args) => sw.evaluate(([f, a]) => self.api[f](...a).then((r) => r, (e) => ({ error: String(e.message ?? e) })), [fn, args]);
   await api("setServer", "http://localhost:4622");
   const P = await ctx.newPage();
@@ -67,13 +68,23 @@ try {
   check(!!saved.saved, "and the recording finishes normally", saved.saved?.name ?? saved.error);
 
   // 3. idle again: the open side panel keeps talking to the extension, which picks the new code up by itself
-  const panel = await ctx.newPage();
-  await panel.goto(`chrome-extension://${EXT_ID}/sidepanel.html`);
-  const fresh = await ctx.waitForEvent("serviceworker", { timeout: 15000 }).catch(() => null);
-  check(!!fresh, "once idle, the extension loads the rebuilt code by itself (the open panel is enough)");
-  if (fresh) {
-    sw = fresh;
-    check(await sw.evaluate(() => self.__old === undefined), "and it really is a fresh start (new code, old state gone)");
+  if (BROWSER === "edge") {
+    const panel = await ctx.newPage();
+    await panel.goto(`chrome-extension://${EXT_ID}/sidepanel.html`);
+    const fresh = await ctx.waitForEvent("serviceworker", { timeout: 15000, predicate: (w) => w.url().startsWith(`chrome-extension://${EXT_ID}/`) }).catch(() => null);
+    check(!!fresh, "once idle, the extension loads the rebuilt code by itself (Edge: on by default; the open panel is enough)");
+    if (fresh) {
+      sw = fresh;
+      check(await sw.evaluate(() => self.__old === undefined), "and it really is a fresh start (new code, old state gone)");
+    }
+  } else {
+    // Chrome and Brave: the developer reload is a setting, off by default, because it is not proven there (an
+    // extension that the test setup installs from the command line or DevTools is not brought back by
+    // chrome.runtime.reload() in these browsers). So by default nothing may reload.
+    const panel = await ctx.newPage();
+    await panel.goto(`chrome-extension://${EXT_ID}/sidepanel.html`);
+    await sleep(6000);
+    check(await sw.evaluate(() => self.__old === true).catch(() => false), `in ${BROWSER} the extension does not reload by itself unless the developer turns that on (and keeps working)`);
   }
 } catch (e) {
   console.log("  FAIL  crashed:", e.message.split("\n")[0]);
@@ -85,7 +96,7 @@ try {
   await ctx.close().catch(() => {});
   server.kill();
   site.close();
-  for (const d of [profile, extDir, recDir]) fs.rmSync(d, { recursive: true, force: true });
+  for (const d of [profile, extDir, recDir]) rmQuiet(d);
   const ok = results.filter(Boolean).length;
   console.log(`\n${ok}/${results.length} checks passed`);
   process.exit(ok === results.length ? 0 : 1);

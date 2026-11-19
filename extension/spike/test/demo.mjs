@@ -2,6 +2,7 @@
 // navigating inside a tab while recording, and a clean MP4 at the end.
 //   node test/demo.mjs            (SOAK=60 node test/demo.mjs  adds a 60 s endurance run first)
 import { chromium } from "../../../node_modules/playwright-core/index.mjs";
+import { launch, launchOptions, SCHEME, PROCESS, extensionWorker, rmQuiet, windowFlag } from "./browser.mjs";
 import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import http from "node:http";
@@ -32,11 +33,11 @@ await new Promise((r) => site.listen(5081, "127.0.0.1", r));
 for (let i = 0; i < 40; i++) { try { if ((await fetch("http://localhost:4610/api/health")).ok) break; } catch { /* starting */ } await sleep(200); }
 
 const profile = fs.mkdtempSync(path.join(os.tmpdir(), "annotrec-extprof-"));
-const ctx = await chromium.launchPersistentContext(profile, {
-  channel: "msedge", headless: false, timeout: 40000, viewport: null,
+const ctx = await launch(chromium, profile, {
+  ...launchOptions(), headless: false, timeout: 40000, viewport: null,
   args: [`--disable-extensions-except=${extDir}`, `--load-extension=${extDir}`,
     "--disable-features=DisableLoadExtensionCommandLineSwitch,CalculateNativeWinOcclusion",
-    "--auto-select-desktop-capture-source=SpikeWindow D and", "--auto-accept-camera-and-microphone-capture",
+    windowFlag("SpikeWindow D"), "--auto-accept-camera-and-microphone-capture",
     "--use-fake-device-for-media-stream", "--window-size=1300,850", "--no-first-run", "--no-default-browser-check"],
 });
 const probe = (file) => {
@@ -53,7 +54,7 @@ const colourShare = (file, t, ch) => {
 };
 
 try {
-  const sw = ctx.serviceWorkers()[0] ?? (await ctx.waitForEvent("serviceworker", { timeout: 15000 }));
+  const sw = await extensionWorker(ctx);
   const api = (fn, ...args) => sw.evaluate(([f, a]) => self.api[f](...a), [fn, args]);
   const badge = () => sw.evaluate(() => chrome.action.getBadgeText({}));
   const key = (c) => sw.evaluate((c) => self.onCommand(c, null), c);
@@ -121,7 +122,7 @@ try {
   await ctx.close().catch(() => {});
   server.kill();
   site.close();
-  for (const d of [profile, extDir, recDir]) fs.rmSync(d, { recursive: true, force: true });
+  for (const d of [profile, extDir, recDir]) rmQuiet(d);
 }
 const ok = results.filter(Boolean).length;
 console.log(`\n${ok}/${results.length} checks passed`);

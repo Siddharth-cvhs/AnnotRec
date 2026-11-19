@@ -133,12 +133,28 @@ function pageRect(frame) {
 }
 
 // -------------------------------------------------------------------- recording
-function tick() {
+const KEEPALIVE_MS = 500; // a still page still gets a picture at least this often, so the video never runs short of the audio
+
+function tick(force = false) {
   const now = performance.now();
-  if (S.lastTick) S.maxGap = Math.max(S.maxGap, now - S.lastTick);
+  if (S.lastTick) {
+    S.maxGap = Math.max(S.maxGap, now - S.lastTick);
+    if (now - S.lastTick > 100) S.slowTicks++; // a visible hitch: the picture waited more than 3 frames
+  }
   S.lastTick = now;
+  S.ticks++;
   const f = S.latest;
   if (!f || !S.cal || !S.geo) return;
+  // Nothing new in the window and the same page size: the last picture is still right. Skipping it saves the
+  // drawing and the encoder's work (a talk over a still page is most of a demo).
+  const key = `${S.geo.innerW}x${S.geo.innerH}@${S.geo.dpr}`;
+  if (!force && S.windowFrames === S.drawnFrames && key === S.drawnKey && now - S.drawnAt < KEEPALIVE_MS) {
+    S.skipped++;
+    return;
+  }
+  S.drawnFrames = S.windowFrames;
+  S.drawnKey = key;
+  S.drawnAt = now;
   const { sx, sy, sw, sh } = pageRect(f);
   const { w, h } = S.out;
   // Keep the page's shape inside a fixed-size picture (other tabs may be a different size).
@@ -216,12 +232,16 @@ async function startUnsafe({ micOn = true, quality = "standard", server = "http:
 
   const tracks = [S.videoTrack];
   S.micIssue = null;
+  const h264 = codec === "h264" && MediaRecorder.isTypeSupported("video/webm;codecs=h264,opus");
+  // The microphone and the server answer independently: ask both at once instead of one after the other.
+  const uploadReady = openUpload(server, quality, h264);
+  uploadReady.catch(() => {}); // reported below
   try {
     S.mic = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
     S.micTrack = S.mic.getAudioTracks()[0];
     S.micTrack.enabled = micOn;
     tracks.push(S.micTrack);
-    // Diagnostics: the loudest sample the microphone delivers while recording.
+    // Diagnostics and the level meter: the loudest sample the microphone delivers while recording.
     S.micPeak = 0;
     S.micState = { readyState: S.micTrack.readyState, muted: S.micTrack.muted, label: S.micTrack.label };
     const rd = new MediaStreamTrackProcessor({ track: S.micTrack }).readable.getReader();
@@ -234,7 +254,7 @@ async function startUnsafe({ micOn = true, quality = "standard", server = "http:
         let chunk = 0;
         for (const x of buf) chunk = Math.max(chunk, Math.abs(x));
         S.micPeak = Math.max(S.micPeak, chunk);
-        S.micLevel = Math.max(chunk, (S.micLevel || 0) * 0.97); // for the level meter: quick up, slow down
+        S.micLevel = Math.max(chunk, (S.micLevel || 0) * 0.97); // quick up, slow down
         value.close();
       }
     })();
@@ -242,8 +262,7 @@ async function startUnsafe({ micOn = true, quality = "standard", server = "http:
     S.micIssue = `No microphone (${e.message}); recording without sound.`;
   }
 
-  const h264 = codec === "h264" && MediaRecorder.isTypeSupported("video/webm;codecs=h264,opus");
-  S.upload = await openUpload(server, quality, h264);
+  S.upload = await uploadReady;
   S.recorder = new MediaRecorder(new MediaStream(tracks), {
     mimeType: h264
       ? "video/webm;codecs=h264,opus"
@@ -257,6 +276,12 @@ async function startUnsafe({ micOn = true, quality = "standard", server = "http:
     S.upload.push(e.data);
   };
   S.frames = 0;
+  S.ticks = 0;
+  S.slowTicks = 0;
+  S.skipped = 0;
+  S.drawnFrames = -1;
+  S.drawnKey = "";
+  S.drawnAt = 0;
   S.maxGap = 0;
   S.lastTick = 0;
   S.windowFrames = 0;
@@ -312,6 +337,7 @@ async function stopUnsafe() {
   if (!S.recorder) throw new Error("Not recording.");
   if (S.pausedAt) resume();
   clearInterval(S.timer);
+  tick(true); // the picture at the very end
   const recorder = S.recorder;
   const done = new Promise((r) => (recorder.onstop = r));
   recorder.stop();
@@ -330,7 +356,7 @@ async function stopUnsafe() {
     rawBase64 = btoa(s);
     S.pieces = null;
   }
-  return { ok: true, rawBase64, saved, durationMs, framesDrawn: S.frames, maxTickGapMs: Math.round(S.maxGap), windowFramesReceived: S.windowFrames, micPeak: Number(S.micPeak.toFixed(4)), micState: S.micState };
+  return { ok: true, rawBase64, saved, durationMs, framesDrawn: S.frames, ticks: S.ticks, slowTicks: S.slowTicks, skipped: S.skipped, maxTickGapMs: Math.round(S.maxGap), windowFramesReceived: S.windowFrames, micPeak: Number(S.micPeak.toFixed(4)), micState: S.micState };
 }
 
 /** While a recording is starting or being finished it must not be interrupted (a reload would lose it). */

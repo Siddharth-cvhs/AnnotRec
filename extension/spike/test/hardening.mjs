@@ -2,6 +2,7 @@
 // the server address is wrong or unsafe, the page cannot be drawn on.
 //   node test/hardening.mjs
 import { chromium } from "../../../node_modules/playwright-core/index.mjs";
+import { launch, launchOptions, SCHEME, PROCESS, extensionWorker, rmQuiet, windowFlag } from "./browser.mjs";
 import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import http from "node:http";
@@ -34,15 +35,15 @@ const startServer = async () => {
 };
 
 const profile = fs.mkdtempSync(path.join(os.tmpdir(), "annotrec-extprof-"));
-const ctx = await chromium.launchPersistentContext(profile, {
-  channel: "msedge", headless: false, timeout: 40000, viewport: null,
+const ctx = await launch(chromium, profile, {
+  ...launchOptions(), headless: false, timeout: 40000, viewport: null,
   args: [`--disable-extensions-except=${extDir}`, `--load-extension=${extDir}`,
     "--disable-features=DisableLoadExtensionCommandLineSwitch,CalculateNativeWinOcclusion",
-    "--auto-select-desktop-capture-source=SpikeWindow H and", "--auto-accept-camera-and-microphone-capture",
+    windowFlag("SpikeWindow H"), "--auto-accept-camera-and-microphone-capture",
     "--use-fake-device-for-media-stream", "--window-size=1300,850", "--no-first-run", "--no-default-browser-check"],
 });
 try {
-  const sw = ctx.serviceWorkers()[0] ?? (await ctx.waitForEvent("serviceworker", { timeout: 15000 }));
+  const sw = await extensionWorker(ctx);
   const api = (fn, ...args) => sw.evaluate(([f, a]) => self.api[f](...a).then((r) => r, (e) => ({ error: String(e.message ?? e) })), [fn, args]);
 
   // --- the server address: only this computer is accepted
@@ -84,7 +85,7 @@ try {
   const panel = await ctx.newPage();
   await panel.goto(`chrome-extension://${EXT_ID}/sidepanel.html`);
   const browserPage = await ctx.newPage(); // an edge:// page: extensions cannot run code on it
-  await browserPage.goto("edge://version").catch(() => {});
+  await browserPage.goto(`${SCHEME}://version`).catch(() => {});
   await browserPage.bringToFront();
   await panel.waitForFunction(() => !document.getElementById("pagehint").hidden, null, { timeout: 8000 });
   check(true, "on a page that cannot be drawn on, the panel says so", (await panel.textContent("#pagehint")).slice(0, 60));
@@ -101,7 +102,7 @@ try {
   await ctx.close().catch(() => {});
   server?.kill();
   site.close();
-  for (const d of [profile, extDir, recDir]) fs.rmSync(d, { recursive: true, force: true });
+  for (const d of [profile, extDir, recDir]) rmQuiet(d);
   const ok = results.filter(Boolean).length;
   console.log(`\n${ok}/${results.length} checks passed`);
   process.exit(ok === results.length ? 0 : 1);

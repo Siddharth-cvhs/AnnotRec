@@ -5,7 +5,7 @@ const $ = (id) => document.getElementById(id);
 
 const HELP = {
   blocked: [
-    "Click the 🔒 icon (or the microphone icon) at the left of the address bar of this tab and set Microphone to <b>Allow</b>, or press <b>Open Edge microphone settings</b> and remove AnnotRec from the Blocked list.",
+    "Click the 🔒 icon (or the microphone icon) at the left of the address bar of this tab and set Microphone to <b>Allow</b>, or press <b>Open browser microphone settings</b> and remove AnnotRec from the Blocked list.",
     "Press <b>Try again</b>.",
   ],
   system: [
@@ -22,7 +22,7 @@ function show(kind, text) {
 
 async function ask() {
   $("fix").hidden = true;
-  $("edge").hidden = $("win").hidden = true;
+  $("browsersettings").hidden = $("win").hidden = true;
   try {
     (await navigator.mediaDevices.getUserMedia({ audio: true })).getTracks().forEach((t) => t.stop());
     show("ok", "Microphone allowed. You can close this tab; recording will have your voice.");
@@ -34,11 +34,12 @@ async function ask() {
     show("bad", denied ? `Microphone: Permission denied (${e.message}).` : `Microphone: ${e.name}: ${e.message}`);
     $("steps").innerHTML = (denied ? HELP.blocked : HELP.system).map((s) => `<li>${s}</li>`).join("");
     $("fix").hidden = false;
-    $("edge").hidden = false;
+    $("browsersettings").hidden = false;
     $("win").hidden = !(system || denied);
   }
 }
 
 $("retry").onclick = ask;
-$("edge").onclick = () => chrome.tabs.create({ url: "edge://settings/content/microphone" });
+$("browsersettings").onclick = () => chrome.tabs.create({ url: self.annotBrowser.microphoneSettings });
+$("browsersettings").textContent = `Open ${self.annotBrowser.name} microphone settings`;
 ask();

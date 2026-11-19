@@ -1,4 +1,4 @@
-# AnnotRec: Version 3 · Browser extension (Microsoft Edge)
+# AnnotRec: Version 3 · Browser extension (Edge, Chrome, Brave)
 
 Version 3 of AnnotRec turns the recorder into a **browser extension**. It works on whatever
 tab you are looking at: record the page with your microphone, switch tabs while recording,
@@ -9,9 +9,9 @@ freeze the page and draw on it while you talk, press **Clear all** to go live ag
 
 | | Version 1 | Version 2 | **Version 3 (this branch)** |
 |---|---|---|---|
-| **Label** | DESKTOP APP, Windows `.exe` | WEB APP, React + Node.js | **BROWSER EXTENSION (Edge) + the Node server** |
+| **Label** | DESKTOP APP, Windows `.exe` | WEB APP, React + Node.js | **BROWSER EXTENSION (Edge, Chrome, Brave) + the Node server** |
 | **Branch / tag** | [`main`](../../tree/main) · `v1.0.0` | [`version-2`](../../tree/version-2) · `v2.0.0` | **`version-3`** |
-| **What you run** | `AnnotRec.exe` | Node server, page at `localhost:4000` | **The extension loaded in Edge + the Node server** |
+| **What you run** | `AnnotRec.exe` | Node server, page at `localhost:4000` | **The extension loaded in your browser + the Node server** |
 | **Records** | A window you pick | The viewport inside the web app | **Any tab, following you across tabs** |
 | **MP4 made by** | Native Windows encoder | FFmpeg | **FFmpeg (the same server as Version 2)** |
 
@@ -21,10 +21,14 @@ freeze the page and draw on it while you talk, press **Clear all** to go live ag
 - **Recording**: `MediaRecorder` (H.264 + Opus), microphone through `getUserMedia`. **Pause/resume** cuts the paused time.
 - **MP4**: pieces are sent live to the Version 2 Node server (`/api/live?video=copy`); FFmpeg repackages the picture and converts the audio to AAC, so **Stop takes under a second**.
 - **Drawing**: Shadow DOM in the browser's top layer; the page is frozen with `captureVisibleTab`.
-- **Tests**: Playwright driving real Edge (`extension/spike/test`).
+- **Browsers**: Edge, Chrome and Brave all pass the full test suite (`BROWSER=edge|chrome|brave npm run ext:test`). One difference: the developer self-reload after a rebuild is on by default in Edge only; in Chrome and Brave it is a setting in the panel (off by default).
+
+**Speed**: 30 fps; on a moving page about 8-10% of a 12-core laptop, on a still page (most of a demo) about 1.5%; Stop under a second; freezing a page about 10-100 ms (about 0.3 s in Chrome).
+
+**Tests**: Playwright driving real Edge (`extension/spike/test`).
 
 ## Extension: quick start
-1. Install **Node.js 20+**, **FFmpeg** (on PATH) and **Microsoft Edge**.
+1. Install **Node.js 20+**, **FFmpeg** (on PATH) and **Microsoft Edge, Google Chrome or Brave**.
 2. Get the code and install:
    ```powershell
    git clone -b version-3 https://github.com/Siddharth-cvhs/AnnotRec.git
@@ -40,7 +44,7 @@ freeze the page and draw on it while you talk, press **Clear all** to go live ag
    ```powershell
    node extension/spike/build.mjs
    ```
-5. In Edge open `edge://extensions`, switch on **Developer mode**, click **Load unpacked** and choose `extension/spike/dist`. Pin the AnnotRec icon.
+5. Open your browser's extensions page (`edge://extensions`, `chrome://extensions` or `brave://extensions`), switch on **Developer mode**, click **Load unpacked** and choose `extension/spike/dist`. Pin the AnnotRec icon.
 6. Open any website, click the icon to open the side panel, then **Share this browser window** (pick this Edge window, once) and **Allow microphone** (once).
 7. Press **Start**, talk, switch tabs, pick a tool to freeze and draw, **Clear all, go live**, **Pause/Resume**, then **Stop**. The MP4 is listed in the panel and saved in the server's `recordings` folder.
 
@@ -48,7 +52,7 @@ freeze the page and draw on it while you talk, press **Clear all** to go live ag
 
 **Tools**: Select (V), Pen (B), Highlighter (H), Line (L), Arrow (A), Box (R), Circle (O), Text (T), Numbered marker (M), Eraser (E); 8 colours, size slider; Ctrl+Z / Ctrl+Shift+Z; Delete removes the selected shape; Esc clears and goes live; Shift snaps lines to 45 degrees.
 
-**Tests**: `npm run ext:test` runs 11 suites (about 110 checks, each in its own Edge and server): static quality gate, drawing tools, latency, panel and permissions, failure handling, end-to-end recording with pixel and sound checks, zoom/resize, pause, performance, demo run, auto-reload.
+**Tests**: `npm run ext:test` runs 12 suites (about 125 checks, each in its own Edge and server): static quality gate, drawing tools, latency, panel and permissions, failure handling, end-to-end recording with pixel and sound checks, zoom/resize, pause, performance, demo run, auto-reload.
 
 **After you change the code**: `npm run ext:build`. A loaded extension reloads itself (not during a recording); you do not need to touch `edge://extensions`. Only the window share has to be picked again.
 
@@ -60,7 +64,7 @@ freeze the page and draw on it while you talk, press **Clear all** to go live ag
 
 **Speed** (measured on a 12-core laptop, recording an animated 1596x946 page): 30 fps in the MP4, the browser uses about 8% of the machine while recording (about 5% of that is the page itself), Stop takes under a second.
 
-**Known limits**: Edge only so far (Chrome and Brave untested); moving a shape is not in the undo history; no pencil tool, screenshot button or library page yet in the extension; some company-managed browsers block unpacked extensions. Research, findings and the roadmap: [`extension/NOTES.md`](extension/NOTES.md).
+**Known limits**: moving a shape is not in the undo history; no pencil tool, screenshot button or library page yet in the extension; some company-managed browsers block unpacked extensions. Research, findings and the roadmap: [`extension/NOTES.md`](extension/NOTES.md).
 
 ---
 
