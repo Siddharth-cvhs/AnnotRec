@@ -48,7 +48,11 @@ freeze the page and draw on it while you talk, press **Clear all** to go live ag
 6. Open any website, click the icon to open the side panel, then **Share this browser window** (pick this Edge window, once) and **Allow microphone** (once).
 7. Press **Start**, talk, switch tabs, pick a tool to freeze and draw, **Clear all, go live**, **Pause/Resume**, then **Stop**. The MP4 is listed in the panel and saved in the server's `recordings` folder.
 
-![The side panel](extension/docs/side-panel.png)
+| Dark | Light |
+|---|---|
+| ![Recording, dark](extension/docs/panel-3-recording-dark.png) | ![Recording, light](extension/docs/panel-3-recording-light.png) |
+
+The panel follows the browser's light or dark theme. **Get ready** folds away once the microphone and the window are set; Start, Pause and Stop cross-fade in the same place; tools, colours and the size preview answer the moment you touch them; a finished recording appears as a "Saved ✓" card and in the list of videos.
 
 **Tools**: Select (V), Pen (B), Highlighter (H), Line (L), Arrow (A), Box (R), Circle (O), Text (T), Numbered marker (M), Eraser (E); 8 colours, size slider; Ctrl+Z / Ctrl+Shift+Z; Delete removes the selected shape; Esc clears and goes live; Shift snaps lines to 45 degrees.
 

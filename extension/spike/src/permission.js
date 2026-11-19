@@ -18,9 +18,15 @@ const HELP = {
 function show(kind, text) {
   $("msg").className = kind === "ok" ? "ok" : "bad";
   $("msg").textContent = text;
+  document.body.dataset.state = kind === "ok" ? "ok" : "denied";
+  $("title").textContent = kind === "ok" ? "Microphone allowed" : "AnnotRec needs your microphone";
 }
 
 async function ask() {
+  document.body.dataset.state = "asking";
+  $("title").textContent = "AnnotRec needs your microphone";
+  $("msg").className = "";
+  $("msg").innerHTML = "Your browser will ask for permission now. Choose <b>Allow</b>.";
   $("fix").hidden = true;
   $("browsersettings").hidden = $("sitesettings").hidden = $("win").hidden = true;
   try {

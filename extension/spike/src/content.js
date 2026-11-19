@@ -40,6 +40,7 @@
     root = host.attachShadow({ mode: "closed" });
     root.innerHTML = `<style>
       img,canvas,#mk{position:fixed;left:0;top:0;width:100vw;height:100vh;display:none}
+      img,canvas{transition:opacity .15s ease}
       .ed{position:fixed;min-width:40px;min-height:1.25em;outline:2px dashed rgba(91,140,255,.9);outline-offset:3px;white-space:pre;pointer-events:auto;background:rgba(255,255,255,.04)}
       canvas{pointer-events:none;touch-action:none}
       #mk{border:8px solid rgb(255,0,255);box-sizing:border-box;pointer-events:none}
@@ -320,6 +321,12 @@
   }
 
   function move(e) {
+    if (!dragFrom && !draft && tool === "select") {
+      // hovering with the select tool: the pointer turns into a "move" cross over a shape
+      const p = pt(e);
+      cv.style.cursor = shapes.some((s) => hit(s, p)) ? "move" : "default";
+      return;
+    }
     if (dragFrom && selected) {
       const p = pt(e);
       shift(selected, p.x - dragFrom.x, p.y - dragFrom.y);
@@ -350,7 +357,7 @@
     if (dragFrom) {
       dragFrom = null;
       baseSkip = null;
-      cv.style.cursor = "crosshair";
+      setCursor();
       return paint();
     }
     if (draft && draft.kind !== "eraser") commit(draft);
@@ -420,7 +427,7 @@
     else if (mod && k === "z") (e.shiftKey ? redo : undo)();
     else if (mod && k === "y") redo();
     else if ((e.key === "Delete" || e.key === "Backspace") && selected) deleteSelected();
-    else if (!mod && !e.altKey && KEYS[k]) tool = KEYS[k];
+    else if (!mod && !e.altKey && KEYS[k]) (tool = KEYS[k], setCursor());
     else used = false;
     if (used) (e.preventDefault(), e.stopPropagation());
   }
@@ -429,14 +436,17 @@
   async function freeze() {
     ensureUi();
     if (frozen) return { ok: true, already: true };
+    clearTimeout(hideTimer); // a fade-out that is still running must not hide what is about to appear
     const r = await chrome.runtime.sendMessage({ type: "snapshot" });
     if (!r?.url) throw new Error("could not take a picture of the page");
+    clearTimeout(hideTimer);
+    bg.style.opacity = cv.style.opacity = "1";
     bg.src = r.url;
     await bg.decode();
     bg.style.display = "block";
     cv.style.display = "block";
     cv.style.pointerEvents = "auto";
-    cv.style.cursor = "crosshair";
+    setCursor();
     frozen = true;
     resizeCanvas();
     return { ok: true };
@@ -450,10 +460,22 @@
     shapes = [];
     redoStack = [];
     draft = null;
-    bg.style.display = "none";
-    cv.style.display = "none";
     cv.style.pointerEvents = "none";
-    bg.removeAttribute("src");
+    // the drawing fades out (0.15 s) instead of vanishing; the layers are taken away once it has
+    bg.style.opacity = cv.style.opacity = "0";
+    clearTimeout(hideTimer);
+    hideTimer = setTimeout(() => {
+      bg.style.display = "none";
+      cv.style.display = "none";
+      bg.removeAttribute("src");
+      bg.style.opacity = cv.style.opacity = "";
+    }, 170);
+  }
+
+  let hideTimer = 0;
+  /** The pointer says what the tool will do: crosshair to draw, I-beam for text, a cross to erase, an arrow to select. */
+  function setCursor() {
+    if (cv) cv.style.cursor = { select: "default", text: "text", eraser: "cell" }[tool] ?? "crosshair";
   }
 
   // ---------------------------------------------------------------- messages
@@ -479,6 +501,7 @@
             if (m.color) color = m.color;
             if (m.width) width = m.width;
             if (tool !== "select") selected = null;
+            setCursor();
             paint();
             reply({ ok: true });
           },
@@ -488,6 +511,7 @@
       case "tool":
         if (TOOLS.includes(m.tool)) tool = m.tool;
         if (tool !== "select") selected = null;
+        setCursor();
         if (m.color) color = m.color;
         if (m.width) width = m.width;
         reply({ ok: true });

@@ -361,3 +361,6 @@ Least-privilege manifest (desktopCapture removed), real icons and version 3.0.0,
 - Panel: optimistic states (Starting, Saving, lit tool), one message for freeze+tool+colour (`draw`), one message for everything the panel shows (`panelState`).
 - Microphone button: asks the browser when it can; when blocked it opens the extension's site-settings page directly; the panel follows permission changes live.
 - Not measured: a real microphone's own opening time.
+
+### Round 8: buttery UI
+Panel redesigned on shared tokens (`ui.css`) with light/dark, an icon sprite, folding setup card, cross-fading record controls, optimistic states, animated alerts and toasts, list items that pop in, a size/colour preview, staggered entrance, `details` that open smoothly, reduced-motion support. Permission page redesigned (pulsing ring while asking, check on success, alert when blocked). In the page: tool-aware cursors, hover cursor for select, fade-out on clear. All 14 suites pass in Edge, Chrome and Brave.

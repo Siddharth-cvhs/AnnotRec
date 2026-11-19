@@ -1,0 +1,139 @@
+/* AnnotRec design: one set of tokens and components for the side panel and the permission page.
+   Light and dark follow the browser. Every movement is short and eased, and switched off for people who ask for less motion. */
+
+:root {
+  color-scheme: light dark;
+  --bg: #f3f5fa;
+  --card: #ffffff;
+  --card-2: #f6f8fc;
+  --border: #e1e6f0;
+  --text: #121826;
+  --muted: #667089;
+  --accent: #3b6cf6;
+  --accent-soft: rgba(59, 108, 246, .12);
+  --rec: #f0434f;
+  --rec-soft: rgba(240, 67, 79, .12);
+  --ok: #17a673;
+  --ok-soft: rgba(23, 166, 115, .13);
+  --warn: #c98a12;
+  --warn-soft: rgba(201, 138, 18, .14);
+  --bad: #d63647;
+  --bad-soft: rgba(214, 54, 71, .11);
+  --shadow: 0 1px 2px rgba(17, 24, 39, .06), 0 6px 20px rgba(17, 24, 39, .06);
+  --ease: cubic-bezier(.2, .8, .2, 1);
+  --fast: 140ms;
+  --base: 220ms;
+  --radius: 14px;
+  --font: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, Roboto, sans-serif;
+  --mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #101319;
+    --card: #181c24;
+    --card-2: #1e232d;
+    --border: #2a303c;
+    --text: #e9edf5;
+    --muted: #8a94a8;
+    --accent: #6b93ff;
+    --accent-soft: rgba(107, 147, 255, .16);
+    --rec: #ff5a64;
+    --rec-soft: rgba(255, 90, 100, .15);
+    --ok: #3ddba0;
+    --ok-soft: rgba(61, 219, 160, .14);
+    --warn: #f5c04e;
+    --warn-soft: rgba(245, 192, 78, .14);
+    --bad: #ff7d8a;
+    --bad-soft: rgba(255, 125, 138, .13);
+    --shadow: 0 1px 2px rgba(0, 0, 0, .35), 0 8px 24px rgba(0, 0, 0, .28);
+  }
+}
+
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 13px/1.45 var(--font);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+button, input { font: inherit; color: inherit; }
+[hidden] { display: none !important; }
+.i { width: 18px; height: 18px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.i.fill { fill: currentColor; stroke: none; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* ---------------------------------------------------------------- buttons */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+  min-height: 34px; padding: 0 13px;
+  background: var(--card-2); border: 1px solid var(--border); border-radius: 10px;
+  cursor: pointer; user-select: none; text-decoration: none; white-space: nowrap;
+  transition: background var(--fast) var(--ease), border-color var(--fast) var(--ease), transform var(--fast) var(--ease), box-shadow var(--base) var(--ease), opacity var(--fast);
+}
+.btn:hover:not(:disabled) { background: var(--card); border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); box-shadow: 0 2px 10px rgba(0, 0, 0, .08); }
+.btn:active:not(:disabled) { transform: scale(.97); box-shadow: none; }
+.btn:disabled { opacity: .45; cursor: default; }
+.btn.primary { background: var(--accent); border-color: transparent; color: #fff; font-weight: 600; }
+.btn.primary:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 88%, #fff); box-shadow: 0 4px 16px color-mix(in srgb, var(--accent) 40%, transparent); }
+.btn.sm { min-height: 28px; padding: 0 11px; font-size: 12px; border-radius: 8px; }
+.btn.icon { padding: 0; width: 34px; }
+.btn.icon.sm { width: 28px; }
+.btn.ghost { background: transparent; border-color: transparent; color: var(--muted); }
+.btn.ghost:hover:not(:disabled) { background: var(--card-2); color: var(--text); box-shadow: none; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 8px; }
+
+/* ---------------------------------------------------------------- cards */
+.card {
+  background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+.card-h { display: flex; align-items: center; gap: 8px; padding: 12px 14px 0; }
+.card-h h2 { margin: 0; font-size: 12px; font-weight: 650; letter-spacing: .02em; color: var(--muted); }
+.card-b { padding: 10px 14px 14px; display: grid; gap: 12px; }
+
+.pill { display: inline-flex; align-items: center; gap: 5px; padding: 2px 9px; border-radius: 99px; background: var(--card-2); color: var(--muted); font-size: 11px; font-weight: 600; }
+.pill.ok { background: var(--ok-soft); color: var(--ok); }
+.pill.bad { background: var(--bad-soft); color: var(--bad); }
+.pill.accent { background: var(--accent-soft); color: var(--accent); }
+
+/* a block that opens and closes smoothly (the height animates, which plain display:none cannot do) */
+.fold { display: grid; grid-template-rows: 1fr; transition: grid-template-rows var(--base) var(--ease), opacity var(--base) var(--ease); }
+.fold > .fold-in { overflow: hidden; min-height: 0; }
+.fold.closed { grid-template-rows: 0fr; opacity: 0; }
+
+/* ---------------------------------------------------------------- alerts and toasts */
+.alert { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border-radius: 12px; font-size: 12.5px; line-height: 1.5; }
+.alert .i { margin-top: 1px; }
+.alert.bad { background: var(--bad-soft); color: var(--bad); }
+.alert.warn { background: var(--warn-soft); color: var(--warn); }
+.alert.ok { background: var(--ok-soft); color: var(--ok); }
+.alert .alert-body { display: grid; gap: 8px; min-width: 0; flex: 1; color: var(--text); }
+.alert .alert-body b { color: inherit; }
+.pop { animation: pop var(--base) var(--ease) both; }
+@keyframes pop { from { opacity: 0; transform: translateY(8px) scale(.98); } to { opacity: 1; transform: none; } }
+
+.snack {
+  position: fixed; left: 50%; bottom: 14px; z-index: 20; max-width: calc(100vw - 28px);
+  padding: 9px 14px; border-radius: 99px; background: var(--text); color: var(--bg); font-size: 12.5px; font-weight: 550;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, .3);
+  opacity: 0; transform: translate(-50%, 14px); pointer-events: none;
+  transition: opacity var(--base) var(--ease), transform var(--base) var(--ease);
+}
+.snack.show { opacity: 1; transform: translate(-50%, 0); }
+
+/* ---------------------------------------------------------------- the animated bar under the header while something is under way */
+.progress { height: 2px; background: transparent; overflow: hidden; position: relative; }
+.progress::after { content: ""; position: absolute; inset: 0; width: 38%; background: var(--accent); border-radius: 2px; transform: translateX(-120%); opacity: 0; }
+body[data-state="starting"] .progress::after, body[data-state="saving"] .progress::after { opacity: 1; animation: slide 1s var(--ease) infinite; }
+@keyframes slide { to { transform: translateX(300%); } }
+
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes pulse { 50% { opacity: .35; transform: scale(.85); } }
+@keyframes shimmer { to { background-position: -200% 0; } }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; scroll-behavior: auto !important; }
+}

@@ -3,32 +3,55 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="color-scheme" content="light dark" />
 <title>AnnotRec: microphone permission</title>
+<link rel="stylesheet" href="ui.css" />
 <style>
-  :root { color-scheme: dark; font: 15px "Segoe UI", system-ui, sans-serif; }
-  body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: #16181d; color: #e8eaf0; }
-  main { width: min(520px, 92vw); background: #1f232b; border: 1px solid #2f3541; border-radius: 14px; padding: 26px; display: grid; gap: 14px; }
-  h1 { margin: 0; font-size: 18px; }
-  p { margin: 0; line-height: 1.5; color: #b6bdcc; }
-  .ok { color: #7ee2a0; } .bad { color: #ffb4b8; }
-  .row { display: flex; gap: 8px; flex-wrap: wrap; }
-  button, a.btn { background: #2a303b; color: inherit; border: 1px solid #343b4a; border-radius: 8px; padding: 9px 14px; font: inherit; cursor: pointer; text-decoration: none; }
-  button.primary { background: #3f72f0; border-color: #3f72f0; }
-  ol { margin: 0; padding-left: 20px; color: #b6bdcc; line-height: 1.6; }
-  [hidden] { display: none !important; }
+  body { min-height: 100vh; display: grid; place-items: center; padding: 24px; }
+  .wrap { width: min(480px, 100%); padding: 28px 26px 24px; display: grid; gap: 16px; justify-items: center; text-align: center; animation: pop .35s var(--ease) both; }
+  .hero { position: relative; width: 76px; height: 76px; display: grid; place-items: center; border-radius: 50%; background: var(--accent-soft); color: var(--accent); transition: background var(--base) var(--ease), color var(--base) var(--ease); }
+  .hero .i { width: 34px; height: 34px; position: relative; z-index: 1; }
+  .hero::before, .hero::after { content: ""; position: absolute; inset: 0; border-radius: 50%; border: 2px solid currentColor; opacity: 0; }
+  body[data-state="asking"] .hero::before { animation: ring 1.8s var(--ease) infinite; }
+  body[data-state="asking"] .hero::after { animation: ring 1.8s var(--ease) .6s infinite; }
+  @keyframes ring { from { transform: scale(1); opacity: .5; } to { transform: scale(1.7); opacity: 0; } }
+  body[data-state="ok"] .hero { background: var(--ok-soft); color: var(--ok); }
+  body[data-state="denied"] .hero { background: var(--bad-soft); color: var(--bad); }
+  .hero .when { position: absolute; inset: 0; display: grid; place-items: center; opacity: 0; transform: scale(.6); transition: opacity var(--base) var(--ease), transform var(--base) var(--ease); }
+  body[data-state="ok"] .hero .w-ok, body[data-state="denied"] .hero .w-bad { opacity: 1; transform: none; }
+  body[data-state="ok"] .hero .w-mic, body[data-state="denied"] .hero .w-mic { opacity: 0; }
+  h1 { margin: 0; font-size: 19px; font-weight: 700; letter-spacing: -.01em; }
+  #msg { margin: 0; line-height: 1.55; color: var(--muted); max-width: 40ch; }
+  #msg.ok { color: var(--ok); font-weight: 600; } #msg.bad { color: var(--bad); font-weight: 600; }
+  #fix { width: 100%; text-align: left; background: var(--card-2); border-radius: 12px; padding: 12px 14px; }
+  #steps { margin: 0; padding-left: 20px; display: grid; gap: 6px; color: var(--muted); line-height: 1.55; }
+  #steps b { color: var(--text); }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+  .btn { min-height: 38px; padding: 0 16px; }
+  body[data-state="ok"] #retry { display: none; }
 </style>
 </head>
-<body>
-<main>
-  <h1>🎙 AnnotRec needs your microphone</h1>
-  <p id="msg">Your browser will ask for permission now. Choose <b>Allow</b>.</p>
+<body data-state="asking">
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-mic" viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0014 0"/><path d="M12 18v3"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 4l9.5 16.5h-19z"/><path d="M12 10v4.5"/><path d="M12 17.6h.01"/></symbol>
+</svg>
+<main class="card wrap">
+  <div class="hero" aria-hidden="true">
+    <svg class="i w-mic"><use href="#i-mic"/></svg>
+    <span class="when w-ok"><svg class="i"><use href="#i-check"/></svg></span>
+    <span class="when w-bad"><svg class="i"><use href="#i-alert"/></svg></span>
+  </div>
+  <h1 id="title">AnnotRec needs your microphone</h1>
+  <p id="msg" role="status">Your browser will ask for permission now. Choose <b>Allow</b>.</p>
   <div id="fix" hidden>
     <ol id="steps"></ol>
   </div>
   <div class="row">
-    <button id="retry" class="primary">Try again</button>
-    <button id="sitesettings" class="primary" hidden>Open AnnotRec's microphone setting</button>
-    <button id="browsersettings" hidden>Open browser microphone settings</button>
+    <button id="retry" class="btn primary">Try again</button>
+    <button id="sitesettings" class="btn primary" hidden>Open AnnotRec's microphone setting</button>
+    <button id="browsersettings" class="btn" hidden>Open browser microphone settings</button>
     <a id="win" class="btn" href="ms-settings:privacy-microphone" target="_blank" hidden>Open Windows microphone settings</a>
   </div>
 </main>

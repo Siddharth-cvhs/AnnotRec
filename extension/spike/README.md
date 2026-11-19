@@ -98,3 +98,11 @@ Measured on a 12-core laptop (`test/startlatency.mjs`, `test/ui.mjs`, `test/perf
 **With a real microphone** the opening of the device itself can still take a moment (a Bluetooth headset can take a second or more, and that is the headset, not the extension). The panel already shows "Starting…", and the work happens in parallel, so you only wait for the microphone itself.
 
 Other numbers: at most five visible hitches (over 100 ms) in a whole recording, Stop under a second, drawing over 400 shapes keeps 60 fps, the side panel polls slowly (1.2 s) when nothing is recording and fast (0.3 s) only while recording.
+
+## Look and feel
+- **Instant, then smooth:** every press answers at once (the button changes, the tool lights up, "Starting…" and "Saving…" show), and every change of state is eased over about 0.15-0.25 s: the **Get ready** card folds away by itself when you are set up, **Start recording** cross-fades into **Pause / Stop / Mute**, the clock and recording dot pulse, the level meter glides, cards rise in when the panel opens, new videos pop into the list, messages slide in and out.
+- **Clear:** one big primary button; icons with labels for the ten tools; a live preview of the chosen colour and size; the saved-videos list shows name, length, size and time with a **Show** button; an empty list explains what to do; every error is a plain sentence in one red box, never a stack trace.
+- **Light and dark:** both follow the browser. People who ask their system for less motion get no animation.
+- **On the page:** the pointer matches the tool (crosshair, I-beam for text, an arrow that turns into a move cross over a shape you can move), and the drawing fades out when you clear it.
+- **Keyboard and screen readers:** every control has a label, messages are announced, focus is always visible, and the part of the panel that is out of sight cannot be reached by Tab.
+- Pictures of every state (light and dark) are made by `node test/uxshots.mjs <folder>`.
